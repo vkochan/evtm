@@ -14,11 +14,13 @@
 enum {
 	DEFAULT,
 	BLUE,
+	RED,
 };
 
 static Color colors[] = {
 	[DEFAULT] = { .fg = -1,         .bg = -1, .fg256 = -1, .bg256 = -1, },
 	[BLUE]    = { .fg = COLOR_BLUE, .bg = -1, .fg256 = 68, .bg256 = -1, },
+	[RED]   = { .fg = COLOR_RED, .bg = -1, .fg256 = 0, .bg256 = -1, },
 };
 
 #define COLOR(c)        COLOR_PAIR(colors[c].pair)
@@ -46,7 +48,7 @@ static Color colors[] = {
 /* printf format string for the tag in the status bar */
 #define TAG_SYMBOL   "[%s]"
 /* curses attributes for the currently selected tags */
-#define TAG_SEL      (COLOR(BLUE) | A_BOLD)
+#define TAG_SEL      (COLOR(RED) | A_BOLD)
 /* curses attributes for not selected tags which contain no windows */
 #define TAG_NORMAL   (COLOR(DEFAULT) | A_NORMAL)
 /* curses attributes for not selected tags which contain windows */
