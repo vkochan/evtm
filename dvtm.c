@@ -191,6 +191,8 @@ static void focusup(const char *args[]);
 static void focusdown(const char *args[]);
 static void focusleft(const char *args[]);
 static void focusright(const char *args[]);
+static void togglesticky(const char *args[]);
+static void setsticky(const char *args[]);
 static void killclient(const char *args[]);
 static void paste(const char *args[]);
 static void quit(const char *args[]);
@@ -221,7 +223,9 @@ static void mouse_minimize(const char *args[]);
 static void mouse_zoom(const char *args[]);
 
 /* functions and variables available to layouts via config.h */
+static void attachafter(Client *c, Client *a);
 static Client* nextvisible(Client *c);
+
 static void focus(Client *c);
 static void resize(Client *c, int x, int y, int w, int h);
 extern Screen screen;
@@ -248,6 +252,8 @@ static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
 static bool runinall = false;
+/* make sense only in layouts which has master window (tile, bstack) */
+static unsigned int sticky_master;
 
 static void
 eprint(const char *errstr, ...) {
@@ -289,6 +295,25 @@ static Client*
 nextvisible(Client *c) {
 	for (; c && !isvisible(c); c = c->next);
 	return c;
+}
+
+static bool ismastersticky(Client *c) {
+	int n = 0;
+	Client *m;
+
+	if (isarrange(fullscreen) || isarrange(grid))
+		return false;
+	if ((sticky_master & tagset[seltags]) == 0)
+		return false;
+	if (!c)
+		return true;
+
+	for (m = nextvisible(clients); m && n < screen.nmaster; m = nextvisible(m->next), n++) {
+		if (c == m)
+			return true;
+	}
+
+	return false;
 }
 
 static void
@@ -414,7 +439,8 @@ draw_border(Client *c) {
 		c->title[maxlen] = '\0';
 	}
 
-	mvwprintw(c->window, 0, 2, "[%s%s#%d]",
+	mvwprintw(c->window, 0, 2, "[%s%s%s#%d]",
+		  ismastersticky(c) ? "*" : "",
 	          *c->title ? c->title : "",
 	          *c->title ? " | " : "",
 	          c->order);
@@ -500,8 +526,19 @@ arrange(void) {
 	draw_all();
 }
 
+static Client *
+lastmaster(unsigned int tag) {
+	Client *c = clients;
+	int n = 1;
+
+	for (; c && !(c->tags & tag); c = c->next);
+	for (; c && n < screen.nmaster; c = c->next, n++);
+
+	return c;
+}
+
 static void
-attach(Client *c) {
+attachfirst(Client *c) {
 	if (clients)
 		clients->prev = c;
 	c->next = clients;
@@ -509,6 +546,20 @@ attach(Client *c) {
 	clients = c;
 	for (int o = 1; c; c = nextvisible(c->next), o++)
 		c->order = o;
+}
+
+static void
+attach(Client *c) {
+	if (ismastersticky(NULL)) {
+		Client *master = lastmaster(c->tags);
+
+		if (master) {
+			attachafter(c, master);
+			return;
+		}
+	}
+
+	attachfirst(c);
 }
 
 static void
@@ -1285,6 +1336,34 @@ focusright(const char *args[]) {
 }
 
 static void
+togglesticky(const char *args[]) {
+	sticky_master ^= tagset[seltags];
+	draw_all();
+}
+
+void static
+setsticky(const char *args[]) {
+	bool on = true;
+	int tag = 1;
+
+	if (args && args[0]) {
+		if (strncmp("on", args[0], 2) == 0)
+			on = true;
+		else if (strncmp("off", args[0], 3) == 0)
+			on = false;
+	}
+	if (args && args[1]) {
+		tag = bitoftag(args[1]) & TAGMASK;
+	}
+
+	if (on)
+		sticky_master |= tag;
+	else
+		sticky_master &= ~tag;
+	draw_all();
+}
+
+static void
 killclient(const char *args[]) {
 	if (!sel)
 		return;
@@ -1433,6 +1512,9 @@ toggleminimize(const char *args[]) {
 	unsigned int n;
 	if (!sel)
 		return;
+	/* do not minimize sticked master */
+	if (ismastersticky(sel))
+		return;
 	/* the last window can't be minimized */
 	if (!sel->minimized) {
 		for (n = 0, c = nextvisible(clients); c; c = nextvisible(c->next))
@@ -1492,7 +1574,7 @@ zoom(const char *args[]) {
 		if (!(c = nextvisible(c->next)))
 			return;
 	detach(c);
-	attach(c);
+	attachfirst(c);
 	focus(c);
 	if (c->minimized)
 		toggleminimize(NULL);

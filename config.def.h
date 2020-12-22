@@ -113,6 +113,7 @@ static KeyBinding bindings[] = {
 	{ { MOD, '7',          }, { focusn,         { "7" }                     } },
 	{ { MOD, '8',          }, { focusn,         { "8" }                     } },
 	{ { MOD, '9',          }, { focusn,         { "9" }                     } },
+	{ { MOD, CTRL('S'),    }, { togglesticky,   { NULL }                    } },
 	{ { MOD, '\t',         }, { focuslast,      { NULL }                    } },
 	{ { MOD, 'q', 'q',     }, { quit,           { NULL }                    } },
 	{ { MOD, 'a',          }, { togglerunall,   { NULL }                    } },
@@ -199,6 +200,8 @@ static Cmd commands[] = {
 	{ "focus",  { focusid,	{ NULL } } },
 	/* tag <win_id> <tag> [tag ...]: add +tag, remove -tag or set tag of the window with the given identifier */
 	{ "tag",    { tagid,	{ NULL } } },
+	/* set master sticky mode on/off */
+	{ "setsticky",    { setsticky,	{ NULL } } },
 };
 
 /* gets executed when dvtm is started */
