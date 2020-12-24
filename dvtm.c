@@ -1373,8 +1373,15 @@ killclient(const char *args[]) {
 
 static void
 paste(const char *args[]) {
-	if (sel && copyreg.data)
-		vt_write(sel->term, copyreg.data, copyreg.len);
+	if (sel && copyreg.data) {
+		size_t len = copyreg.len;
+
+		if (copyreg.data[len - 2] == '\r')
+			len--;
+		if (copyreg.data[len - 1] == '\n')
+			len--;
+		vt_write(sel->term, copyreg.data, len);
+	}
 }
 
 static void
