@@ -202,6 +202,12 @@ static Cmd commands[] = {
 	{ "tag",    { tagid,	{ NULL } } },
 	/* set master sticky mode on/off */
 	{ "setsticky",    { setsticky,	{ NULL } } },
+	/* increase/decrease the number of windows in master area */
+	{ "incnmaster", { incnmaster, { NULL } } },
+	/* increase/decrease the size of master area */
+	{ "setmfact", { setmfact, { NULL } } },
+	/* put/get window to/from master area */
+	{ "zoom", { zoom, { NULL } } },
 };
 
 /* gets executed when dvtm is started */
