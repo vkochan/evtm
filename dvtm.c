@@ -236,9 +236,20 @@ static char *title;
 
 #include "config.h"
 
+typedef struct {
+	unsigned int curtag, prevtag;
+	int nmaster[LENGTH(tags) + 1];
+	float mfact[LENGTH(tags) + 1];
+	Layout *layout[LENGTH(tags) + 1];
+	int barpos[LENGTH(tags) + 1];
+	int barlastpos[LENGTH(tags) + 1];
+	bool runinall[LENGTH(tags) + 1];
+} Pertag;
+
 /* global variables */
 static const char *dvtm_name = "dvtm";
 Screen screen = { .mfact = MFACT, .nmaster = NMASTER, .history = SCROLL_HISTORY };
+static Pertag pertag;
 static Client *stack = NULL;
 static Client *sel = NULL;
 static Client *lastsel = NULL;
@@ -336,15 +347,15 @@ updatebarpos(void) {
 static void
 hidebar(void) {
 	if (bar.pos != BAR_OFF) {
-		bar.lastpos = bar.pos;
-		bar.pos = BAR_OFF;
+		bar.lastpos = pertag.barlastpos[pertag.curtag] = bar.pos;
+		bar.pos = pertag.barpos[pertag.curtag] = BAR_OFF;
 	}
 }
 
 static void
 showbar(void) {
 	if (bar.pos == BAR_OFF)
-		bar.pos = bar.lastpos;
+		bar.pos = pertag.barpos[pertag.curtag] = bar.lastpos;
 }
 
 static void
@@ -376,7 +387,7 @@ drawbar(void) {
 		printw(TAG_SYMBOL, tags[i]);
 	}
 
-	attrset(runinall ? TAG_SEL : TAG_NORMAL);
+	attrset(pertag.runinall[pertag.curtag] ? TAG_SEL : TAG_NORMAL);
 	addstr(layout->symbol);
 	attrset(TAG_NORMAL);
 
@@ -426,7 +437,7 @@ draw_border(Client *c) {
 		return;
 	if (sel != c && c->urgent)
 		attrs = URGENT_ATTR;
-	if (sel == c || (runinall && !c->minimized))
+	if (sel == c || (pertag.runinall[pertag.curtag] && !c->minimized))
 		attrs = SELECTED_ATTR;
 
 	wattrset(c->window, attrs);
@@ -896,9 +907,33 @@ toggletag(const char *args[]) {
 }
 
 static void
+setpertag(void) {
+	screen.nmaster = pertag.nmaster[pertag.curtag];
+	screen.mfact = pertag.mfact[pertag.curtag];
+	layout = pertag.layout[pertag.curtag];
+	if (bar.pos != pertag.barpos[pertag.curtag]) {
+		bar.pos = pertag.barpos[pertag.curtag];
+		updatebarpos();
+	}
+	bar.lastpos = pertag.barlastpos[pertag.curtag];
+	runinall = pertag.runinall[pertag.curtag];
+}
+
+static void
 toggleview(const char *args[]) {
+	int i;
+
 	unsigned int newtagset = tagset[seltags] ^ (bitoftag(args[0]) & TAGMASK);
 	if (newtagset) {
+		if(newtagset == TAGMASK) {
+			pertag.prevtag = pertag.curtag;
+			pertag.curtag = 0;
+		} else if(!(newtagset & 1 << (pertag.curtag - 1))) {
+			pertag.prevtag = pertag.curtag;
+			for (i=0; !(newtagset &1 << i); i++) ;
+			pertag.curtag = i + 1;
+		}
+		setpertag();
 		tagset[seltags] = newtagset;
 		tagschanged();
 	}
@@ -906,9 +941,19 @@ toggleview(const char *args[]) {
 
 static void
 view(const char *args[]) {
+	int i;
+
 	unsigned int newtagset = bitoftag(args[0]) & TAGMASK;
 	if (tagset[seltags] != newtagset && newtagset) {
 		seltags ^= 1; /* toggle sel tagset */
+		pertag.prevtag = pertag.curtag;
+		if(args[0] == NULL)
+			pertag.curtag = 0;
+		else {
+			for (i = 0; (i < LENGTH(tags)) && (tags[i] != args[0]); i++) ;
+			pertag.curtag = i + 1;
+		}
+		setpertag();
 		tagset[seltags] = newtagset;
 		tagschanged();
 	}
@@ -916,7 +961,13 @@ view(const char *args[]) {
 
 static void
 viewprevtag(const char *args[]) {
+	unsigned int tmptag;
+
 	seltags ^= 1;
+	tmptag = pertag.prevtag;
+	pertag.prevtag = pertag.curtag;
+	pertag.curtag = tmptag;
+	setpertag();
 	tagschanged();
 }
 
@@ -939,7 +990,7 @@ keypress(int code) {
 		nodelay(stdscr, FALSE);
 	}
 
-	for (Client *c = runinall ? nextvisible(clients) : sel; c; c = nextvisible(c->next)) {
+	for (Client *c = pertag.runinall[pertag.curtag] ? nextvisible(clients) : sel; c; c = nextvisible(c->next)) {
 		if (is_content_visible(c)) {
 			c->urgent = false;
 			if (code == '\e')
@@ -949,7 +1000,7 @@ keypress(int code) {
 			if (key != -1)
 				vt_keypress(c->term, key);
 		}
-		if (!runinall)
+		if (!pertag.runinall[pertag.curtag])
 			break;
 	}
 }
@@ -966,6 +1017,21 @@ mouse_setup(void) {
 	}
 	mousemask(mask, NULL);
 #endif /* CONFIG_MOUSE */
+}
+
+static void
+initpertag(void) {
+	int i;
+
+	pertag.curtag = pertag.prevtag = 1;
+	for(i=0; i <= LENGTH(tags); i++) {
+		pertag.nmaster[i] = screen.nmaster;
+		pertag.mfact[i] = screen.mfact;
+		pertag.layout[i] = layout;
+		pertag.barpos[i] = bar.pos;
+		pertag.barlastpos[i] = bar.lastpos;
+		pertag.runinall[i] = runinall;
+	}
 }
 
 static bool
@@ -1013,6 +1079,7 @@ setup(void) {
 		}
 		colors[i].pair = vt_color_reserve(colors[i].fg, colors[i].bg);
 	}
+	initpertag();
 	resize_screen();
 	struct sigaction sa;
 	memset(&sa, 0, sizeof sa);
@@ -1453,6 +1520,7 @@ setlayout(const char *args[]) {
 			return;
 		layout = &layouts[i];
 	}
+	pertag.layout[pertag.curtag] = layout;
 	arrange();
 }
 
@@ -1473,6 +1541,7 @@ incnmaster(const char *args[]) {
 		if (screen.nmaster < 1)
 			screen.nmaster = 1;
 	}
+	pertag.nmaster[pertag.curtag] = screen.nmaster;
 	arrange();
 }
 
@@ -1495,6 +1564,7 @@ setmfact(const char *args[]) {
 		else if (screen.mfact > 0.9)
 			screen.mfact = 0.9;
 	}
+	pertag.mfact[pertag.curtag] = screen.mfact;
 	arrange();
 }
 
@@ -1519,10 +1589,10 @@ static void
 togglebarpos(const char *args[]) {
 	switch (bar.pos == BAR_OFF ? bar.lastpos : bar.pos) {
 	case BAR_TOP:
-		bar.pos = BAR_BOTTOM;
+		bar.pos = pertag.barpos[pertag.curtag] = BAR_BOTTOM;
 		break;
 	case BAR_BOTTOM:
-		bar.pos = BAR_TOP;
+		bar.pos = pertag.barpos[pertag.curtag] = BAR_TOP;
 		break;
 	}
 	updatebarpos();
@@ -1580,7 +1650,7 @@ togglemouse(const char *args[]) {
 
 static void
 togglerunall(const char *args[]) {
-	runinall = !runinall;
+	pertag.runinall[pertag.curtag] = !pertag.runinall[pertag.curtag];
 	drawbar();
 	draw_all();
 }
