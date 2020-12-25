@@ -179,6 +179,7 @@ typedef struct {
 
 /* commands for use by keybindings */
 static void create(const char *args[]);
+static void editor(const char *args[]);
 static void copymode(const char *args[]);
 static void focusn(const char *args[]);
 static void focusid(const char *args[]);
@@ -1145,6 +1146,21 @@ create(const char *args[]) {
 	attach(c);
 	focus(c);
 	arrange();
+}
+
+static void
+editor(const char *args[]) {
+	const char *editor[3] = { NULL };
+
+	editor[0] = getenv("DVTM_EDITOR");
+	if (!editor[0])
+		editor[0] = getenv("VISUAL");
+	if (!editor[0])
+		editor[0] = getenv("EDITOR");
+	if (!editor[0])
+		editor[0] = "vi";
+
+	create(editor);
 }
 
 static void
