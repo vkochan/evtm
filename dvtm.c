@@ -69,6 +69,7 @@ struct Client {
 	volatile sig_atomic_t editor_died;
 	const char *cmd;
 	char title[255];
+	bool sync_title;
 	int order;
 	pid_t pid;
 	unsigned short int id;
@@ -687,6 +688,7 @@ term_title_handler(Vt *term, const char *title) {
 	if (title)
 		strncpy(c->title, title, sizeof(c->title) - 1);
 	c->title[title ? sizeof(c->title) - 1 : 0] = '\0';
+	c->sync_title = false;
 	settitle(c);
 	if (!isarrange(fullscreen) || sel == c)
 		draw_border(c);
@@ -1152,6 +1154,48 @@ static char *getcwd_by_pid(Client *c) {
 }
 
 static void
+synctitle(Client *c)
+{
+	size_t len = sizeof(c->title);
+	char buf[128];
+	char path[64];
+	size_t blen;
+	char *eol;
+	pid_t pid;
+	int pty;
+	int ret;
+	int fd;
+
+	pty = c->editor ? vt_pty_get(c->editor) : vt_pty_get(c->app);
+
+	pid = tcgetpgrp(pty);
+	if (pid == -1)
+		return;
+
+	snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+
+	fd = open(path, O_RDONLY);
+	if (fd == -1)
+		return;
+
+	blen = MIN(sizeof(buf), sizeof(c->title));
+
+	ret = read(fd, buf, blen);
+	if (ret <= 0)
+		goto done;
+
+	buf[ret - 1] = '\0';
+
+	strncpy(c->title, basename(buf), ret);
+
+	settitle(c);
+	if (!isarrange(fullscreen) || sel == c)
+		draw_border(c);
+done:
+	close(fd);
+}
+
+static void
 create(const char *args[]) {
 	const char *pargs[4] = { shell, NULL };
 	char buf[8], *cwd = NULL;
@@ -1198,11 +1242,17 @@ create(const char *args[]) {
 		strncpy(c->title, args[1], sizeof(c->title));
 	c->title[sizeof(c->title)-1] = '\0';
 
+	if (strlen(c->title) == 0)
+		c->sync_title = true;
+	else
+		c->sync_title = false;
+
 	if (args && args[2])
 		cwd = !strcmp(args[2], "$CWD") ? getcwd_by_pid(sel) : (char*)args[2];
 	c->pid = vt_forkpty(c->term, shell, pargs, cwd, env, NULL, NULL);
 	if (args && args[2] && !strcmp(args[2], "$CWD"))
 		free(cwd);
+
 	vt_data_set(c->term, c);
 	vt_title_handler_set(c->term, term_title_handler);
 	vt_urgent_handler_set(c->term, term_urgent_handler);
@@ -2095,9 +2145,13 @@ main(int argc, char *argv[]) {
 				}
 			}
 
-			if (c != sel && is_content_visible(c)) {
-				draw_content(c);
-				wnoutrefresh(c->window);
+			if (is_content_visible(c)) {
+				if (c->sync_title)
+					synctitle(c);
+				if (c != sel) {
+					draw_content(c);
+					wnoutrefresh(c->window);
+				}
 			}
 		}
 
