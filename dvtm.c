@@ -217,6 +217,7 @@ static void toggleview(const char *args[]);
 static void viewprevtag(const char *args[]);
 static void view(const char *args[]);
 static void zoom(const char *args[]);
+static void setcwd(const char *args[]);
 
 /* commands for use by mouse bindings */
 static void mouse_focus(const char *args[]);
@@ -237,6 +238,8 @@ static char *title;
 
 #include "config.h"
 
+#define CWD_MAX		256
+
 typedef struct {
 	unsigned int curtag, prevtag;
 	int nmaster[LENGTH(tags) + 1];
@@ -245,6 +248,7 @@ typedef struct {
 	int barpos[LENGTH(tags) + 1];
 	int barlastpos[LENGTH(tags) + 1];
 	bool runinall[LENGTH(tags) + 1];
+	char *cwd[LENGTH(tags) + 1];
 } Pertag;
 
 /* global variables */
@@ -1033,6 +1037,10 @@ initpertag(void) {
 		pertag.barpos[i] = bar.pos;
 		pertag.barlastpos[i] = bar.lastpos;
 		pertag.runinall[i] = runinall;
+
+		pertag.cwd[i] = calloc(CWD_MAX, 1);
+		if (!getcwd(pertag.cwd[i], CWD_MAX))
+			error("%s\n", strerror(errno));
 	}
 }
 
@@ -1130,6 +1138,7 @@ destroy(Client *c) {
 
 static void
 cleanup(void) {
+	int i;
 	while (clients)
 		destroy(clients);
 	vt_shutdown();
@@ -1143,6 +1152,8 @@ cleanup(void) {
 		close(cmdfifo.fd);
 	if (cmdfifo.file)
 		unlink(cmdfifo.file);
+	for(i=0; i <= LENGTH(tags); i++)
+		free(pertag.cwd[i]);
 }
 
 static char *getcwd_by_pid(Client *c) {
@@ -1249,6 +1260,9 @@ create(const char *args[]) {
 
 	if (args && args[2])
 		cwd = !strcmp(args[2], "$CWD") ? getcwd_by_pid(sel) : (char*)args[2];
+	else
+		cwd = pertag.cwd[pertag.curtag];
+
 	c->pid = vt_forkpty(c->term, shell, pargs, cwd, env, NULL, NULL);
 	if (args && args[2] && !strcmp(args[2], "$CWD"))
 		free(cwd);
@@ -1722,6 +1736,18 @@ zoom(const char *args[]) {
 	if (c->minimized)
 		toggleminimize(NULL);
 	arrange();
+}
+
+static void
+setcwd(const char *args[]) {
+	int tag = pertag.curtag;
+
+	if (!args || !args[0])
+		return;
+	if (args && args[1])
+		tag = atoi(args[0]);
+
+	strncpy(pertag.cwd[tag], args[0], CWD_MAX - 1);
 }
 
 /* commands for use by mouse bindings */

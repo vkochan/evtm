@@ -209,6 +209,8 @@ static Cmd commands[] = {
 	{ "setmfact", { setmfact, { NULL } } },
 	/* put/get window to/from master area */
 	{ "zoom", { zoom, { NULL } } },
+	/* set cwd per tag or for current */
+	{ "setcwd", { setcwd, { NULL } } },
 };
 
 /* gets executed when dvtm is started */
