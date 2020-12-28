@@ -211,6 +211,8 @@ static Cmd commands[] = {
 	{ "zoom", { zoom, { NULL } } },
 	/* set cwd per tag or for current */
 	{ "setcwd", { setcwd, { NULL } } },
+	/* change layout by name or select next */
+	{ "setlayout", { setlayout, { NULL } } },
 };
 
 /* gets executed when dvtm is started */
