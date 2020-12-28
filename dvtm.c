@@ -155,6 +155,11 @@ typedef struct {
 } CmdFifo;
 
 typedef struct {
+	int fd;
+	const char *file;
+} EvtFifo;
+
+typedef struct {
 	char *data;
 	size_t len;
 	size_t size;
@@ -218,6 +223,8 @@ static void viewprevtag(const char *args[]);
 static void view(const char *args[]);
 static void zoom(const char *args[]);
 static void setcwd(const char *args[]);
+static void senduserevt(const char *args[]);
+static void docmd(const char *args[]);
 
 /* commands for use by mouse bindings */
 static void mouse_focus(const char *args[]);
@@ -235,6 +242,9 @@ extern Screen screen;
 static unsigned int waw, wah, wax, way;
 static Client *clients = NULL;
 static char *title;
+
+static KeyBinding *usrkeyb = NULL;
+static int usrkeybn;
 
 #include "config.h"
 
@@ -265,6 +275,7 @@ static bool mouse_events_enabled = ENABLE_MOUSE;
 static Layout *layout = layouts;
 static StatusBar bar = { .fd = -1, .lastpos = BAR_POS, .pos = BAR_POS, .autohide = BAR_AUTOHIDE, .h = 1 };
 static CmdFifo cmdfifo = { .fd = -1 };
+static EvtFifo evtfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
@@ -829,16 +840,26 @@ resize_screen(void) {
 }
 
 static KeyBinding*
-keybinding(KeyCombo keys, unsigned int keycount) {
-	for (unsigned int b = 0; b < LENGTH(bindings); b++) {
+keybindmatch(KeyBinding *keyb, unsigned int keybn, KeyCombo keys, unsigned int keycount) {
+	for (unsigned int b = 0; b < keybn; b++) {
 		for (unsigned int k = 0; k < keycount; k++) {
-			if (keys[k] != bindings[b].keys[k])
+			if (keys[k] != keyb[b].keys[k])
 				break;
 			if (k == keycount - 1)
-				return &bindings[b];
+				return &keyb[b];
 		}
 	}
 	return NULL;
+}
+
+static KeyBinding*
+keybinding(KeyCombo keys, unsigned int keycount) {
+	KeyBinding *keyb;
+
+	keyb = keybindmatch(bindings, LENGTH(bindings), keys, keycount);
+	if (!keyb)
+		keyb = keybindmatch(usrkeyb, usrkeybn, keys, keycount);
+	return keyb;
 }
 
 static unsigned int
@@ -1152,8 +1173,15 @@ cleanup(void) {
 		close(cmdfifo.fd);
 	if (cmdfifo.file)
 		unlink(cmdfifo.file);
+	if (evtfifo.fd > 0)
+		close(evtfifo.fd);
+	if (evtfifo.file)
+		unlink(evtfifo.file);
 	for(i=0; i <= LENGTH(tags); i++)
 		free(pertag.cwd[i]);
+	for(i=0; i < usrkeybn; i++)
+		free((char *) usrkeyb[i].action.args[0]);
+	free(usrkeyb);
 }
 
 static char *getcwd_by_pid(Client *c) {
@@ -1750,6 +1778,13 @@ setcwd(const char *args[]) {
 	strncpy(pertag.cwd[tag], args[0], CWD_MAX - 1);
 }
 
+static void senduserevt(const char *args[]) {
+	if (!args || !args[0] || !args[1])
+		return;
+
+	write(evtfifo.fd, args[0], (size_t)args[1]);
+}
+
 /* commands for use by mouse bindings */
 static void
 mouse_focus(const char *args[]) {
@@ -1786,18 +1821,10 @@ get_cmd_by_name(const char *name) {
 }
 
 static void
-handle_cmdfifo(void) {
-	int r;
-	char *p, *s, cmdbuf[512], c;
+handle_cmd(char *cmdbuf) {
+	char *p, *s, c;
 	Cmd *cmd;
 
-	r = read(cmdfifo.fd, cmdbuf, sizeof cmdbuf - 1);
-	if (r <= 0) {
-		cmdfifo.fd = -1;
-		return;
-	}
-
-	cmdbuf[r] = '\0';
 	p = cmdbuf;
 	while (*p) {
 		/* find the command name */
@@ -1878,6 +1905,31 @@ handle_cmdfifo(void) {
 			}
 		}
 	}
+}
+
+static void
+handle_cmdfifo(void) {
+	char *p, cmdbuf[512];
+	int r;
+
+	r = read(cmdfifo.fd, cmdbuf, sizeof cmdbuf - 1);
+	if (r <= 0) {
+		cmdfifo.fd = -1;
+		return;
+	}
+
+	cmdbuf[r] = '\0';
+	handle_cmd(cmdbuf);
+}
+
+static void docmd(const char *args[]) {
+	char cmdbuf[512];
+
+	if (!args || !args[0])
+		return;
+
+	strncpy(cmdbuf, args[0], sizeof(cmdbuf) - 1);
+	handle_cmd(cmdbuf);
 }
 
 static void
@@ -1992,6 +2044,66 @@ usage(void) {
 	exit(EXIT_FAILURE);
 }
 
+static void
+addusrkeyb(char *map)
+{
+	char *keystr, *typestr, *valstr;
+	KeyBinding *key;
+	char *keybval;
+	size_t vlen;
+	int i;
+
+	keystr = map;
+
+	typestr = strchr(keystr, ':');
+	if (!typestr)
+		error("missing key-bind type %s\n", map);
+	*typestr = '\0';
+	typestr++;
+
+	valstr = strchr(typestr, ':');
+	if (!valstr)
+		error("missing key-bind value %s\n", map);
+	*valstr = '\0';
+	valstr++;
+
+	if (strcmp(typestr, "m") != 0 && strcmp(typestr, "x") != 0 && strcmp(typestr, "c") != 0)
+		error("invalid key-bind type %s\n", typestr);
+	if (strlen(valstr) == 0)
+		error("key-bind value is empty\n");
+
+	usrkeybn++;
+	usrkeyb = realloc(usrkeyb, sizeof(*usrkeyb) * usrkeybn);
+	if (!usrkeyb)
+		error("fail on usrkeyb realloc\n");
+
+	key = &usrkeyb[usrkeybn - 1];
+	memset(key, 0, sizeof(*key));
+
+	for (i = 0; i < MAX_KEYS; i++) {
+		key->keys[i] = *keystr++;
+		if (key->keys[i] == '^') {
+			key->keys[i] = CTRL(*keystr);
+			keystr++;
+		}
+	}
+	keybval = strdup(valstr);
+	if (!keybval)
+		error("fail on key-bind value dup\n");
+	vlen = strlen(keybval);
+	key->action.args[0] = keybval;
+	if (strcmp(typestr, "m") == 0) {
+		key->action.args[1] = (const char *)(vlen + 1);
+		key->action.cmd = senduserevt;
+		keybval[vlen] = '\n';
+	} else if (strcmp(typestr, "x") == 0) {
+		key->action.cmd = create;
+	} else if (strcmp(typestr, "c") == 0) {
+		key->action.cmd = docmd;
+		keybval[vlen] = '\n';
+	}
+}
+
 static bool
 parse_args(int argc, char *argv[]) {
 	bool init = false;
@@ -2054,6 +2166,17 @@ parse_args(int argc, char *argv[]) {
 				setenv("DVTM_CMD_FIFO", fifo, 1);
 				break;
 			}
+			case 'e': {
+				const char *fifo;
+				evtfifo.fd = open_or_create_fifo(argv[++arg], &evtfifo.file);
+				if (!(fifo = realpath(argv[arg], NULL)))
+					error("%s\n", strerror(errno));
+				setenv("DVTM_EVT_FIFO", fifo, 1);
+				break;
+			}
+			case 'b':
+				addusrkeyb(argv[++arg]);
+				break;
 			default:
 				usage();
 		}
