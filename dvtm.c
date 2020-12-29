@@ -215,6 +215,7 @@ static void tagid(const char *args[]);
 static void togglebar(const char *args[]);
 static void togglebarpos(const char *args[]);
 static void toggleminimize(const char *args[]);
+static void minimizeother(const char *args[]);
 static void togglemouse(const char *args[]);
 static void togglerunall(const char *args[]);
 static void toggletag(const char *args[]);
@@ -1731,6 +1732,21 @@ toggleminimize(const char *args[]) {
 		detach(m);
 		attach(m);
 	}
+	arrange();
+}
+
+static void minimizeother(const char *args[])
+{
+	unsigned int n;
+	Client *c;
+
+	for (n = 0, c = nextvisible(clients); c; c = nextvisible(c->next)) {
+		if (ismastersticky(c) || sel == c)
+			continue;
+
+		c->minimized = true;
+	}
+
 	arrange();
 }
 
