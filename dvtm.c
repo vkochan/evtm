@@ -201,6 +201,7 @@ static void focusright(const char *args[]);
 static void togglesticky(const char *args[]);
 static void setsticky(const char *args[]);
 static void killclient(const char *args[]);
+static void killother(const char *args[]);
 static void paste(const char *args[]);
 static void quit(const char *args[]);
 static void redraw(const char *args[]);
@@ -1545,6 +1546,17 @@ killclient(const char *args[]) {
 		return;
 	debug("killing client with pid: %d\n", sel->pid);
 	kill(-sel->pid, SIGKILL);
+}
+
+static void killother(const char *args[]) {
+	unsigned int n;
+	Client *c;
+
+	for (n = 0, c = nextvisible(clients); c; c = nextvisible(c->next)) {
+		if (ismastersticky(c) || sel == c)
+			continue;
+		kill(-c->pid, SIGKILL);
+	}
 }
 
 static void

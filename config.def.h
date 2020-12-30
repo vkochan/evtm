@@ -99,6 +99,7 @@ static KeyBinding bindings[] = {
 	{ { MOD, 'H',          }, { setmfact,       { "-0.05" }                 } },
 	{ { MOD, 'L',          }, { setmfact,       { "+0.05" }                 } },
 	{ { MOD, 'o', '.',     }, { minimizeother , { NULL }                    } },
+	{ { MOD, 'o', 'x',     }, { killother,      { NULL }                    } },
 	{ { MOD, '.',          }, { toggleminimize, { NULL }                    } },
 	{ { MOD, 's',          }, { togglebar,      { NULL }                    } },
 	{ { MOD, 'S',          }, { togglebarpos,   { NULL }                    } },
