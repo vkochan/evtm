@@ -226,6 +226,7 @@ static void view(const char *args[]);
 static void zoom(const char *args[]);
 static void setcwd(const char *args[]);
 static void senduserevt(const char *args[]);
+static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
 
 /* commands for use by mouse bindings */
@@ -946,6 +947,7 @@ setpertag(void) {
 	}
 	bar.lastpos = pertag.barlastpos[pertag.curtag];
 	runinall = pertag.runinall[pertag.curtag];
+	sendevtfmt("curtag %d\n", pertag.curtag);
 }
 
 static void
@@ -1811,6 +1813,21 @@ static void senduserevt(const char *args[]) {
 		return;
 
 	write(evtfifo.fd, args[0], (size_t)args[1]);
+}
+
+void sendevtfmt(const char *fmt, ... )
+{
+	char buf[256];
+	va_list args;
+	int len;
+
+	if (evtfifo.fd == -1)
+		return;
+
+	va_start (args, fmt);
+	len = vsnprintf(buf, sizeof(buf), fmt, args);
+	write(evtfifo.fd, buf, len);
+	va_end (args);
 }
 
 /* commands for use by mouse bindings */
