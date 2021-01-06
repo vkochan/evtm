@@ -137,10 +137,12 @@ typedef struct {
 } Cmd;
 
 enum { BAR_TOP, BAR_BOTTOM, BAR_OFF };
+enum { BAR_LEFT, BAR_RIGHT };
 
 typedef struct {
 	int fd;
 	int pos, lastpos;
+	int align;
 	bool autohide;
 	unsigned short int h;
 	unsigned short int y;
@@ -228,6 +230,7 @@ static void setcwd(const char *args[]);
 static void senduserevt(const char *args[]);
 static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
+static void setstatus(const char *args[]);
 
 /* commands for use by mouse bindings */
 static void mouse_focus(const char *args[]);
@@ -276,7 +279,13 @@ static unsigned int seltags;
 static unsigned int tagset[2] = { 1, 1 };
 static bool mouse_events_enabled = ENABLE_MOUSE;
 static Layout *layout = layouts;
-static StatusBar bar = { .fd = -1, .lastpos = BAR_POS, .pos = BAR_POS, .autohide = BAR_AUTOHIDE, .h = 1 };
+static StatusBar bar = { .fd = -1,
+			 .lastpos = BAR_POS,
+			 .pos = BAR_POS,
+			 .align = BAR_RIGHT,
+			 .autohide = BAR_AUTOHIDE,
+			 .h = 1
+		       };
 static CmdFifo cmdfifo = { .fd = -1 };
 static EvtFifo evtfifo = { .fd = -1 };
 static const char *shell;
@@ -421,15 +430,23 @@ drawbar(void) {
 	size_t numchars = mbstowcs(wbuf, bar.text, sizeof bar.text);
 
 	if (numchars != (size_t)-1 && (width = wcswidth(wbuf, maxwidth)) != -1) {
-		int pos;
-		for (pos = 0; pos + width < maxwidth; pos++)
-			addch(' ');
+		int pos = 0;
+
+		if (bar.align == BAR_RIGHT) {
+			for (; pos + width < maxwidth; pos++)
+				addch(' ');
+		}
 
 		for (size_t i = 0; i < numchars; i++) {
 			pos += wcwidth(wbuf[i]);
 			if (pos > maxwidth)
 				break;
 			addnwstr(wbuf+i, 1);
+		}
+
+		if (bar.align == BAR_LEFT) {
+			for (; pos + width < maxwidth; pos++)
+				addch(' ');
 		}
 
 		clrtoeol();
@@ -1975,6 +1992,18 @@ static void docmd(const char *args[]) {
 
 	strncpy(cmdbuf, args[0], sizeof(cmdbuf) - 1);
 	handle_cmd(cmdbuf);
+}
+
+static void setstatus(const char *args[]) {
+	if (!args || !args[0] || !args[1])
+		return;
+
+	if (strcmp("align", args[0]) == 0) {
+		if (strcmp("left", args[1]) == 0)
+			bar.align = BAR_LEFT;
+		else if (strcmp("right", args[1]) == 0)
+			bar.align = BAR_RIGHT;
+	}
 }
 
 static void

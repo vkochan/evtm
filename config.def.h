@@ -215,6 +215,8 @@ static Cmd commands[] = {
 	{ "setcwd", { setcwd, { NULL } } },
 	/* change layout by name or select next */
 	{ "setlayout", { setlayout, { NULL } } },
+	/* status bar */
+	{ "setstatus", { setstatus, { NULL } } },
 };
 
 /* gets executed when dvtm is started */
