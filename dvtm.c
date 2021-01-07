@@ -508,7 +508,7 @@ draw(Client *c) {
 		redrawwin(c->window);
 		draw_content(c);
 	}
-	if (!isarrange(fullscreen) || sel == c)
+	if (!isarrange(fullscreen))
 		draw_border(c);
 	wnoutrefresh(c->window);
 }
@@ -725,7 +725,7 @@ term_title_handler(Vt *term, const char *title) {
 	c->title[title ? sizeof(c->title) - 1 : 0] = '\0';
 	c->sync_title = false;
 	settitle(c);
-	if (!isarrange(fullscreen) || sel == c)
+	if (!isarrange(fullscreen))
 		draw_border(c);
 	applycolorrules(c);
 }
@@ -2375,6 +2375,9 @@ main(int argc, char *argv[]) {
 					draw_content(c);
 					wnoutrefresh(c->window);
 				}
+			} else if (isvisible(c) && c->minimized) {
+				draw_border(c);
+				wnoutrefresh(c->window);
 			}
 		}
 
