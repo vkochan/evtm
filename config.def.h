@@ -217,6 +217,7 @@ static Cmd commands[] = {
 	{ "setlayout", { setlayout, { NULL } } },
 	/* status bar */
 	{ "setstatus", { setstatus, { NULL } } },
+	{ "setminimized", { setminimized, { NULL } } },
 };
 
 /* gets executed when dvtm is started */

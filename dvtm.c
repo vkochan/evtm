@@ -139,6 +139,8 @@ typedef struct {
 enum { BAR_TOP, BAR_BOTTOM, BAR_OFF };
 enum { BAR_LEFT, BAR_RIGHT };
 
+enum { MIN_ALIGN_HORIZ, MIN_ALIGN_VERT };
+
 typedef struct {
 	int fd;
 	int pos, lastpos;
@@ -231,6 +233,7 @@ static void senduserevt(const char *args[]);
 static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
 static void setstatus(const char *args[]);
+static void setminimized(const char *args[]);
 
 /* commands for use by mouse bindings */
 static void mouse_focus(const char *args[]);
@@ -294,6 +297,7 @@ static volatile sig_atomic_t running = true;
 static bool runinall = false;
 /* make sense only in layouts which has master window (tile, bstack) */
 static unsigned int sticky_master;
+static int min_align = MIN_ALIGN_HORIZ;
 
 static void
 eprint(const char *errstr, ...) {
@@ -540,7 +544,7 @@ draw_all(void) {
 
 static void
 arrange(void) {
-	unsigned int m = 0, n = 0;
+	unsigned int m = 0, n = 0, dh = 0;
 	for (Client *c = nextvisible(clients); c; c = nextvisible(c->next)) {
 		c->order = ++n;
 		if (c->minimized)
@@ -556,17 +560,25 @@ arrange(void) {
 		updatebarpos();
 	}
 	if (m && !isarrange(fullscreen))
-		wah--;
+		dh = 1;
+	if (min_align == MIN_ALIGN_VERT)
+		dh = m;
+	wah -= dh;
 	layout->arrange();
 	if (m && !isarrange(fullscreen)) {
 		unsigned int i = 0, nw = waw / m, nx = wax;
 		for (Client *c = nextvisible(clients); c; c = nextvisible(c->next)) {
 			if (c->minimized) {
-				resize(c, nx, way+wah, ++i == m ? waw - nx : nw, 1);
-				nx += nw;
+				if (dh == m) {
+					resize(c, nx, way+wah+i, waw, 1);
+					i++;
+				} else {
+					resize(c, nx, way+wah, ++i == m ? waw - nx : nw, 1);
+					nx += nw;
+				}
 			}
 		}
-		wah++;
+		wah += dh;
 	}
 	focus(NULL);
 	wnoutrefresh(stdscr);
@@ -2003,6 +2015,18 @@ static void setstatus(const char *args[]) {
 			bar.align = BAR_LEFT;
 		else if (strcmp("right", args[1]) == 0)
 			bar.align = BAR_RIGHT;
+	}
+}
+
+static void setminimized(const char *args[]) {
+	if (!args || !args[0] || !args[1])
+		return;
+
+	if (strcmp("align", args[0]) == 0) {
+		if (strcmp("vert", args[1]) == 0)
+			min_align = MIN_ALIGN_VERT;
+		else if (strcmp("horiz", args[1]) == 0)
+			min_align = MIN_ALIGN_HORIZ;
 	}
 }
 
