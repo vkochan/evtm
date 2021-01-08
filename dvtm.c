@@ -569,7 +569,7 @@ arrange(void) {
 		unsigned int i = 0, nw = waw / m, nx = wax;
 		for (Client *c = nextvisible(clients); c; c = nextvisible(c->next)) {
 			if (c->minimized) {
-				if (dh == m) {
+				if (min_align == MIN_ALIGN_VERT) {
 					resize(c, nx, way+wah+i, waw, 1);
 					i++;
 				} else {
