@@ -46,7 +46,7 @@ static Color colors[] = {
 /* scroll back buffer size in lines */
 #define SCROLL_HISTORY 500
 /* printf format string for the tag in the status bar */
-#define TAG_SYMBOL   "[%s]"
+#define TAG_SYMBOL   "[%s%s%s]"
 /* curses attributes for the currently selected tags */
 #define TAG_SEL      (COLOR(RED) | A_BOLD)
 /* curses attributes for not selected tags which contain no windows */
@@ -226,6 +226,7 @@ static Cmd commands[] = {
 	/* status bar */
 	{ "setstatus", { setstatus, { NULL } } },
 	{ "setminimized", { setminimized, { NULL } } },
+	{ "tagname", { tagname, { NULL } } },
 };
 
 /* gets executed when dvtm is started */

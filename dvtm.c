@@ -217,6 +217,7 @@ static void setmfact(const char *args[]);
 static void startup(const char *args[]);
 static void tag(const char *args[]);
 static void tagid(const char *args[]);
+static void tagname(const char *args[]);
 static void togglebar(const char *args[]);
 static void togglebarpos(const char *args[]);
 static void toggleminimize(const char *args[]);
@@ -268,6 +269,7 @@ typedef struct {
 	int barlastpos[LENGTH(tags) + 1];
 	bool runinall[LENGTH(tags) + 1];
 	char *cwd[LENGTH(tags) + 1];
+	char *name[LENGTH(tags) + 1];
 } Pertag;
 
 /* global variables */
@@ -416,7 +418,11 @@ drawbar(void) {
 			attrset(TAG_OCCUPIED);
 		else
 			attrset(TAG_NORMAL);
-		printw(TAG_SYMBOL, tags[i]);
+
+		if (pertag.name[i] && strlen(pertag.name[i]))
+			printw(TAG_SYMBOL, tags[i], ":", pertag.name[i]);
+		else
+			printw(TAG_SYMBOL, tags[i], "", "");
 	}
 
 	attrset(pertag.runinall[pertag.curtag] ? TAG_SEL : TAG_NORMAL);
@@ -955,6 +961,23 @@ tagid(const char *args[]) {
 }
 
 static void
+tagname(const char *args[]) {
+	if (!args[0])
+		return;
+
+	unsigned int tag_id = atoi(args[0]) - 1;
+	if (tag_id >= LENGTH(tags))
+		return;
+
+	free(pertag.name[tag_id]);
+	pertag.name[tag_id] = NULL;
+
+	if (args[1] && strlen(args[1]))
+		pertag.name[tag_id] = strdup(args[1]);
+	drawbar();
+}
+
+static void
 toggletag(const char *args[]) {
 	if (!sel)
 		return;
@@ -1091,6 +1114,7 @@ initpertag(void) {
 		pertag.barpos[i] = bar.pos;
 		pertag.barlastpos[i] = bar.lastpos;
 		pertag.runinall[i] = runinall;
+		pertag.name[i] = NULL;
 
 		pertag.cwd[i] = calloc(CWD_MAX, 1);
 		if (!getcwd(pertag.cwd[i], CWD_MAX))
@@ -1210,8 +1234,10 @@ cleanup(void) {
 		close(evtfifo.fd);
 	if (evtfifo.file)
 		unlink(evtfifo.file);
-	for(i=0; i <= LENGTH(tags); i++)
+	for(i=0; i <= LENGTH(tags); i++) {
+		free(pertag.name[i]);
 		free(pertag.cwd[i]);
+	}
 	for(i=0; i < usrkeybn; i++)
 		free((char *) usrkeyb[i].action.args[0]);
 	free(usrkeyb);
