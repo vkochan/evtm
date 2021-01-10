@@ -227,6 +227,7 @@ static Cmd commands[] = {
 	{ "setstatus", { setstatus, { NULL } } },
 	{ "setminimized", { setminimized, { NULL } } },
 	{ "tagname", { tagname, { NULL } } },
+	{ "view", { view, { NULL } } },
 };
 
 /* gets executed when dvtm is started */
