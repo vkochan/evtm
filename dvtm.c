@@ -1035,7 +1035,7 @@ view(const char *args[]) {
 		if(args[0] == NULL)
 			pertag.curtag = 0;
 		else {
-			for (i = 0; (i < LENGTH(tags)) && (tags[i] != args[0]); i++) ;
+			for (i = 0; (i < LENGTH(tags)) && strcmp(tags[i], args[0]); i++) ;
 			pertag.curtag = i + 1;
 		}
 		setpertag();
