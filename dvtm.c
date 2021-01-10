@@ -565,10 +565,12 @@ arrange(void) {
 			showbar();
 		updatebarpos();
 	}
-	if (m && !isarrange(fullscreen))
-		dh = 1;
-	if (min_align == MIN_ALIGN_VERT)
-		dh = m;
+	if (m && !isarrange(fullscreen)) {
+		if (min_align == MIN_ALIGN_VERT)
+			dh = m;
+		else
+			dh = 1;
+	}
 	wah -= dh;
 	layout->arrange();
 	if (m && !isarrange(fullscreen)) {
