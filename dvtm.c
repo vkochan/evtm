@@ -1579,8 +1579,8 @@ togglesticky(const char *args[]) {
 
 void static
 setsticky(const char *args[]) {
+	int tag = pertag.curtag;
 	bool on = true;
-	int tag = 1;
 
 	if (args && args[0]) {
 		if (strncmp("on", args[0], 2) == 0)
