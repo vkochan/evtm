@@ -518,7 +518,7 @@ draw(Client *c) {
 		redrawwin(c->window);
 		draw_content(c);
 	}
-	if (!isarrange(fullscreen))
+	if (!isarrange(fullscreen) || c == sel)
 		draw_border(c);
 	wnoutrefresh(c->window);
 }
