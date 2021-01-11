@@ -419,8 +419,8 @@ drawbar(void) {
 		else
 			attrset(TAG_NORMAL);
 
-		if (pertag.name[i] && strlen(pertag.name[i]))
-			printw(TAG_SYMBOL, tags[i], ":", pertag.name[i]);
+		if (pertag.name[i+1] && strlen(pertag.name[i+1]))
+			printw(TAG_SYMBOL, tags[i], ":", pertag.name[i+1]);
 		else
 			printw(TAG_SYMBOL, tags[i], "", "");
 	}
@@ -964,18 +964,29 @@ tagid(const char *args[]) {
 
 static void
 tagname(const char *args[]) {
+	unsigned int tag_id;
+	const char *name;
+
 	if (!args[0])
 		return;
 
-	unsigned int tag_id = atoi(args[0]) - 1;
-	if (tag_id >= LENGTH(tags))
-		return;
+	if (args[0] && args[1]) {
+		tag_id = atoi(args[0]);
+		if (tag_id >= LENGTH(tags))
+			return;
+	} else {
+		tag_id = pertag.curtag;
+	}
 
 	free(pertag.name[tag_id]);
 	pertag.name[tag_id] = NULL;
 
-	if (args[1] && strlen(args[1]))
-		pertag.name[tag_id] = strdup(args[1]);
+	name = args[0];
+	if (args[1])
+		name = args[1];
+
+	if (name && strlen(name))
+		pertag.name[tag_id] = strdup(name);
 	drawbar();
 }
 
