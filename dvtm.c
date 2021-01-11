@@ -270,6 +270,7 @@ typedef struct {
 	bool runinall[LENGTH(tags) + 1];
 	char *cwd[LENGTH(tags) + 1];
 	char *name[LENGTH(tags) + 1];
+	bool msticky[LENGTH(tags) + 1];
 } Pertag;
 
 /* global variables */
@@ -298,7 +299,6 @@ static Register copyreg;
 static volatile sig_atomic_t running = true;
 static bool runinall = false;
 /* make sense only in layouts which has master window (tile, bstack) */
-static unsigned int sticky_master;
 static int min_align = MIN_ALIGN_HORIZ;
 
 static void
@@ -349,7 +349,7 @@ static bool ismastersticky(Client *c) {
 
 	if (isarrange(fullscreen) || isarrange(grid))
 		return false;
-	if ((sticky_master & tagset[seltags]) == 0)
+	if (!pertag.msticky[pertag.curtag])
 		return false;
 	if (!c)
 		return true;
@@ -1127,6 +1127,7 @@ initpertag(void) {
 		pertag.barpos[i] = bar.pos;
 		pertag.barlastpos[i] = bar.lastpos;
 		pertag.runinall[i] = runinall;
+		pertag.msticky[i] = false;
 		pertag.name[i] = NULL;
 
 		pertag.cwd[i] = calloc(CWD_MAX, 1);
@@ -1584,7 +1585,7 @@ focusright(const char *args[]) {
 
 static void
 togglesticky(const char *args[]) {
-	sticky_master ^= tagset[seltags];
+	pertag.msticky[pertag.curtag] = !pertag.msticky[pertag.curtag];
 	draw_all();
 }
 
@@ -1603,10 +1604,7 @@ setsticky(const char *args[]) {
 		tag = bitoftag(args[1]) & TAGMASK;
 	}
 
-	if (on)
-		sticky_master |= tag;
-	else
-		sticky_master &= ~tag;
+	pertag.msticky[tag] = on;
 	draw_all();
 }
 
