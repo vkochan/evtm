@@ -38,7 +38,7 @@ static Color colors[] = {
 /* status bar (command line option -s) position */
 #define BAR_POS         BAR_TOP /* BAR_BOTTOM, BAR_OFF */
 /* whether status bar should be hidden if only one client exists */
-#define BAR_AUTOHIDE    true
+#define BAR_AUTOHIDE    false
 /* master width factor [0.1 .. 0.9] */
 #define MFACT 0.5
 /* number of clients in master area */
