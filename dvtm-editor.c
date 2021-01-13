@@ -39,8 +39,11 @@ static void error(const char *msg, ...) {
 int main(int argc, char *argv[])
 {
 	int exit_status = EXIT_FAILURE, tmp_write = -1;
+	const char *editor;
 
-	const char *editor = getenv("DVTM_EDITOR");
+	editor = getenv("DVTM_COPY_EDITOR");
+	if (!editor)
+		editor = getenv("DVTM_EDITOR");
 	if (!editor)
 		editor = getenv("VISUAL");
 	if (!editor)
