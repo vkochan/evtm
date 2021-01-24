@@ -156,12 +156,7 @@ typedef struct {
 	int fd;
 	const char *file;
 	unsigned short int id;
-} CmdFifo;
-
-typedef struct {
-	int fd;
-	const char *file;
-} EvtFifo;
+} Fifo;
 
 typedef struct {
 	char *data;
@@ -292,8 +287,8 @@ static StatusBar bar = { .fd = -1,
 			 .autohide = BAR_AUTOHIDE,
 			 .h = 1
 		       };
-static CmdFifo cmdfifo = { .fd = -1 };
-static EvtFifo evtfifo = { .fd = -1 };
+static Fifo cmdfifo = { .fd = -1 };
+static Fifo evtfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
