@@ -1449,35 +1449,35 @@ copymode(const char *args[]) {
 
 static void
 copybuf(const char *args[]) {
-    char buf[1024];
-    int offs = 0;
-    int len;
+	char buf[1024];
+	int offs = 0;
+	int len;
 
-    if (!args || !args[0])
-	    return;
+	if (!args || !args[0])
+		return;
 
-    if (strcmp(args[0], "put") == 0) {
-	    do {
-		    len = read(cpyfifo.fd, buf, sizeof(buf));
-		    if (len <= 0)
-			    break;
+	if (strcmp(args[0], "put") == 0) {
+		do {
+			len = read(cpyfifo.fd, buf, sizeof(buf));
+			if (len <= 0)
+				break;
 
-		    if (!copyreg.data) {
-			    copyreg.data = malloc(sizeof(buf));
-			    copyreg.size = sizeof(buf);
-		    }
+			if (!copyreg.data) {
+				copyreg.data = malloc(sizeof(buf));
+				copyreg.size = sizeof(buf);
+			}
 
-		    copyreg.len += len;
+			copyreg.len += len;
 
-		    if (copyreg.len > copyreg.size) {
-			    copyreg.data = realloc(copyreg.data, copyreg.len);
-			    copyreg.size = copyreg.len;
-		    }
+			if (copyreg.len > copyreg.size) {
+				copyreg.data = realloc(copyreg.data, copyreg.len);
+				copyreg.size = copyreg.len;
+			}
 
-		    memcpy(copyreg.data + offs, buf, len);
-		    offs += len;
-	    } while (len == sizeof(buf));
-    }
+			memcpy(copyreg.data + offs, buf, len);
+			offs += len;
+		} while (len == sizeof(buf));
+	}
 }
 
 static void
