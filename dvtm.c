@@ -186,6 +186,7 @@ typedef struct {
 static void create(const char *args[]);
 static void editor(const char *args[]);
 static void copymode(const char *args[]);
+static void copybuf(const char *args[]);
 static void focusn(const char *args[]);
 static void focusid(const char *args[]);
 static void focusnext(const char *args[]);
@@ -289,6 +290,7 @@ static StatusBar bar = { .fd = -1,
 		       };
 static Fifo cmdfifo = { .fd = -1 };
 static Fifo evtfifo = { .fd = -1 };
+static Fifo cpyfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
@@ -1243,6 +1245,10 @@ cleanup(void) {
 		close(evtfifo.fd);
 	if (evtfifo.file)
 		unlink(evtfifo.file);
+	if (cpyfifo.fd > 0)
+		close(cpyfifo.fd);
+	if (cpyfifo.file)
+		unlink(cpyfifo.file);
 	for(i=0; i <= LENGTH(tags); i++) {
 		free(pertag.name[i]);
 		free(pertag.cwd[i]);
@@ -1439,6 +1445,39 @@ copymode(const char *args[]) {
 
 	if (args[1])
 		vt_write(sel->editor, args[1], strlen(args[1]));
+}
+
+static void
+copybuf(const char *args[]) {
+    char buf[1024];
+    int offs = 0;
+    int len;
+
+    if (!args || !args[0])
+	    return;
+
+    if (strcmp(args[0], "put") == 0) {
+	    do {
+		    len = read(cpyfifo.fd, buf, sizeof(buf));
+		    if (len <= 0)
+			    break;
+
+		    if (!copyreg.data) {
+			    copyreg.data = malloc(sizeof(buf));
+			    copyreg.size = sizeof(buf);
+		    }
+
+		    copyreg.len += len;
+
+		    if (copyreg.len > copyreg.size) {
+			    copyreg.data = realloc(copyreg.data, copyreg.len);
+			    copyreg.size = copyreg.len;
+		    }
+
+		    memcpy(copyreg.data + offs, buf, len);
+		    offs += len;
+	    } while (len == sizeof(buf));
+    }
 }
 
 static void
@@ -2145,12 +2184,12 @@ handle_editor(Client *c) {
 }
 
 static int
-open_or_create_fifo(const char *name, const char **name_created) {
+__open_or_create_fifo(const char *name, const char **name_created, int flags) {
 	struct stat info;
 	int fd;
 
 	do {
-		if ((fd = open(name, O_RDWR|O_NONBLOCK)) == -1) {
+		if ((fd = open(name, flags)) == -1) {
 			if (errno == ENOENT && !mkfifo(name, S_IRUSR|S_IWUSR)) {
 				*name_created = name;
 				continue;
@@ -2164,6 +2203,11 @@ open_or_create_fifo(const char *name, const char **name_created) {
 	if (!S_ISFIFO(info.st_mode))
 		error("%s is not a named pipe\n", name);
 	return fd;
+}
+
+static int
+open_or_create_fifo(const char *name, const char **name_created) {
+	return __open_or_create_fifo(name, name_created, O_RDWR|O_NONBLOCK);
 }
 
 static void
@@ -2302,6 +2346,14 @@ parse_args(int argc, char *argv[]) {
 				if (!(fifo = realpath(argv[arg], NULL)))
 					error("%s\n", strerror(errno));
 				setenv("DVTM_EVT_FIFO", fifo, 1);
+				break;
+			}
+			case 'y': {
+				const char *fifo;
+				cpyfifo.fd = __open_or_create_fifo(argv[++arg], &cpyfifo.file, O_RDWR);
+				if (!(fifo = realpath(argv[arg], NULL)))
+					error("%s\n", strerror(errno));
+				setenv("DVTM_CPY_FIFO", fifo, 1);
 				break;
 			}
 			case 'b':
