@@ -1457,6 +1457,8 @@ copybuf(const char *args[]) {
 		return;
 
 	if (strcmp(args[0], "put") == 0) {
+		copyreg.len = 0;
+
 		do {
 			len = read(cpyfifo.fd, buf, sizeof(buf));
 			if (len <= 0)
