@@ -1646,10 +1646,25 @@ setsticky(const char *args[]) {
 
 static void
 killclient(const char *args[]) {
-	if (!sel)
+	Client *target = sel;
+
+	if (args && args[0]) {
+		int order = atoi(args[0]);
+		Client *c;
+
+		for (c = nextvisible(clients); c; c = nextvisible(c->next)) {
+			if (c->order == order) {
+				target = c;
+				break;
+			}
+		}
+	}
+
+	if (!target)
 		return;
-	debug("killing client with pid: %d\n", sel->pid);
-	kill(-sel->pid, SIGKILL);
+
+	debug("killing client with pid: %d\n", target->pid);
+	kill(-target->pid, SIGKILL);
 }
 
 static void killother(const char *args[]) {
