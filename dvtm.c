@@ -494,11 +494,11 @@ draw_border(Client *c) {
 		c->title[maxlen] = '\0';
 	}
 
-	mvwprintw(c->window, 0, 2, "[%s%s%s#%d]",
+	mvwprintw(c->window, 0, 2, "[(#%d) %s%s%s]",
+		  c->order,
 		  ismastersticky(c) ? "*" : "",
 	          *c->title ? c->title : "",
-	          *c->title ? " | " : "",
-	          c->order);
+	          *c->title ? " | " : "");
 	if (t)
 		c->title[maxlen] = t;
 	wmove(c->window, y, x);
