@@ -1,7 +1,7 @@
 include config.mk
 
 SRC = dvtm.c vt.c
-BIN = dvtm dvtm-status dvtm-editor dvtm-pager
+BIN = dvtm dvtm-status dvtm-editor dvtm-pager dvtm-cmd
 MANUALS = dvtm.1 dvtm-editor.1 dvtm-pager.1
 
 VERSION = $(shell git describe --always --dirty 2>/dev/null || echo "0.15-git")

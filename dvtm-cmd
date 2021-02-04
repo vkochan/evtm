@@ -1,0 +1,77 @@
+#!/bin/sh
+
+DO_RET=n
+
+usage() {
+    echo "usage: dvtm-cmd [OPTIONS]  CMD ARGS"
+    echo "OPTIONS:"
+    echo "   -c PATH         PATH to CMD FIFO (default is \$DVTM_CMD_FIFO)"
+    echo "   -r PATH         PATH to RET FIFO (default is \$DVTM_RET_FIFO)"
+    echo "   -y PATH         PATH to CPY FIFO (default is \$DVTM_CPY_FIFO)"
+    echo "   -i PATH,-       PATH to input file or \"-\" for stdin"
+}
+
+while [ $# > 0 ]; do
+    case $1 in
+        "-c")
+            FIFO_CMD=$2
+            shift 1
+            ;;
+        "-r")
+            FIFO_RET=$2
+            shift 1
+            ;;
+        "-y")
+            FIFO_CPY=$2
+            shift 1
+            ;;
+        "-i")
+            INPUT=$2
+            shift 1
+            ;;
+        *)
+         break
+         ;;
+    esac
+    shift 1
+done
+
+[ -z "${FIFO_CMD}" ] && FIFO_CMD=${DVTM_CMD_FIFO}
+[ -z "${FIFO_RET}" ] && FIFO_RET=${DVTM_RET_FIFO}
+[ -z "${FIFO_CPY}" ] && FIFO_CPY=${DVTM_CPY_FIFO}
+
+if [ ! -e "${FIFO_CMD}" ]; then
+    echo "error: cmd fifo does not exist"
+    usage
+    exit 1
+fi
+
+case $1 in
+    "settitle")
+        echo -ne "\033]0;$2\007"
+        exit 0
+        ;;
+
+    "copybuf")
+        [ "${2}" == "put" ] && cat $INPUT > ${FIFO_CPY}
+        [ "${2}" == "get" ] && DO_RET=y
+        ;;
+    "echo")
+        DO_RET=y
+	;;
+esac
+
+echo "$@" > $FIFO_CMD
+
+if [ "${DO_RET}" == "y" ]; then
+    if [ ! -e "${FIFO_RET}" ]; then
+        echo "error: ret fifo does not exist"
+        usage
+        exit 1
+    fi
+
+    read count < $FIFO_RET
+    [ -z "$count" ] && exit 0
+
+    [[ $count > 0 ]] && head -n $count $FIFO_RET
+fi
