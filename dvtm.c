@@ -229,6 +229,7 @@ static void setcwd(const char *args[]);
 static void senduserevt(const char *args[]);
 static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
+static void doret(const char *msg, size_t len);
 static void setstatus(const char *args[]);
 static void setminimized(const char *args[]);
 
@@ -291,6 +292,7 @@ static StatusBar bar = { .fd = -1,
 static Fifo cmdfifo = { .fd = -1 };
 static Fifo evtfifo = { .fd = -1 };
 static Fifo cpyfifo = { .fd = -1 };
+static Fifo retfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
@@ -1249,6 +1251,10 @@ cleanup(void) {
 		close(cpyfifo.fd);
 	if (cpyfifo.file)
 		unlink(cpyfifo.file);
+	if (retfifo.fd > 0)
+		close(retfifo.fd);
+	if (retfifo.file)
+		unlink(retfifo.file);
 	for(i=0; i <= LENGTH(tags); i++) {
 		free(pertag.name[i]);
 		free(pertag.cwd[i]);
@@ -1479,6 +1485,8 @@ copybuf(const char *args[]) {
 			memcpy(copyreg.data + offs, buf, len);
 			offs += len;
 		} while (len == sizeof(buf));
+	} else if (strcmp(args[0], "get") == 0) {
+		doret(copyreg.data, copyreg.len);
 	}
 }
 
@@ -2094,6 +2102,24 @@ static void docmd(const char *args[]) {
 	handle_cmd(cmdbuf);
 }
 
+static void doret(const char *msg, size_t len) {
+    char tmp[10] = { '\n' };
+    unsigned int lines = 1;
+    const char *ptr = msg;
+    int i;
+
+    if (retfifo.fd <= 0)
+	    return;
+
+    for (i = 0; i < len; i++, ptr++)
+	    if (*ptr == '\n')
+		    lines++;
+
+    write(retfifo.fd, tmp, snprintf(tmp, sizeof(tmp), "%u\n", lines));
+    write(retfifo.fd, msg, len);
+    write(retfifo.fd, "\n", 1);
+}
+
 static void setstatus(const char *args[]) {
 	if (!args || !args[0] || !args[1])
 		return;
@@ -2371,6 +2397,14 @@ parse_args(int argc, char *argv[]) {
 				if (!(fifo = realpath(argv[arg], NULL)))
 					error("%s\n", strerror(errno));
 				setenv("DVTM_CPY_FIFO", fifo, 1);
+				break;
+			}
+			case 'r': {
+				const char *fifo;
+				retfifo.fd = __open_or_create_fifo(argv[++arg], &retfifo.file, O_RDWR);
+				if (!(fifo = realpath(argv[arg], NULL)))
+					error("%s\n", strerror(errno));
+				setenv("DVTM_RET_FIFO", fifo, 1);
 				break;
 			}
 			case 'b':
