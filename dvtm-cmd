@@ -11,7 +11,7 @@ usage() {
     echo "   -i PATH,-       PATH to input file or \"-\" for stdin"
 }
 
-while [ $# > 0 ]; do
+while [ $# -gt 0 ]; do
     case $1 in
         "-c")
             FIFO_CMD=$2
@@ -73,5 +73,5 @@ if [ "${DO_RET}" == "y" ]; then
     read count < $FIFO_RET
     [ -z "$count" ] && exit 0
 
-    [[ $count > 0 ]] && head -n $count $FIFO_RET
+    [ $count -gt 0 ] && head -n $count $FIFO_RET
 fi
