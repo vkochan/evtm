@@ -101,7 +101,8 @@ typedef struct {
 	Color *color;
 } ColorRule;
 
-#define ALT(k)      ((k) + (161 - 'a'))
+/* #define ALT(k)      ((k) + (161 - 'a')) */
+#define ALT	27
 #if defined CTRL && defined _AIX
   #undef CTRL
 #endif
@@ -2485,6 +2486,7 @@ main(int argc, char *argv[]) {
 
 		if (FD_ISSET(STDIN_FILENO, &rd)) {
 			int code = getch();
+rescan:
 			if (code >= 0) {
 				keys[key_index++] = code;
 				KeyBinding *binding = NULL;
@@ -2493,6 +2495,17 @@ main(int argc, char *argv[]) {
 					handle_mouse();
 				} else if ((binding = keybinding(keys, key_index))) {
 					unsigned int key_length = MAX_KEYS;
+					int alt_code;
+
+					if (code == ALT) {
+						nodelay(stdscr, TRUE);
+						alt_code = getch();
+						nodelay(stdscr, FALSE);
+						if (alt_code >= 0)
+							code = alt_code;
+						goto rescan;
+					}
+
 					while (key_length > 1 && !binding->keys[key_length-1])
 						key_length--;
 					if (key_index == key_length) {
