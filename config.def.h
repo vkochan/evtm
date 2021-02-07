@@ -73,6 +73,7 @@ static Layout layouts[] = {
 
 #define MOD  CTRL('g')
 #define TAGKEYS(KEY,TAG) \
+	{ { ALT, KEY,          }, { view,           { tags[TAG] }               } }, \
 	{ { MOD, 'v', KEY,     }, { view,           { tags[TAG] }               } }, \
 	{ { MOD, 't', KEY,     }, { tag,            { tags[TAG] }               } }, \
 	{ { MOD, 'V', KEY,     }, { toggleview,     { tags[TAG] }               } }, \
@@ -97,6 +98,10 @@ static KeyBinding bindings[] = {
 	{ { MOD, 'k',          }, { focusup,        { NULL }                    } },
 	{ { MOD, 'h',          }, { focusleft,      { NULL }                    } },
 	{ { MOD, 'l',          }, { focusright,     { NULL }                    } },
+	{ { ALT, 'j',          }, { focusdown,      { NULL }                    } },
+	{ { ALT, 'k',          }, { focusup,        { NULL }                    } },
+	{ { ALT, 'h',          }, { focusleft,      { NULL }                    } },
+	{ { ALT, 'l',          }, { focusright,     { NULL }                    } },
 	{ { MOD, 'K',          }, { focusprev,      { NULL }                    } },
 	{ { MOD, 'f',          }, { setlayout,      { "[]=" }                   } },
 	{ { MOD, 'g',          }, { setlayout,      { "+++" }                   } },
