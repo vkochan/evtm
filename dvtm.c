@@ -488,7 +488,10 @@ draw_border(Client *c) {
 
 	wattrset(c->window, attrs);
 	getyx(c->window, y, x);
-	mvwhline(c->window, 0, 0, ACS_HLINE, c->w);
+	if (c == sel)
+		mvwhline(c->window, 0, 0, '=', c->w);
+	else
+		mvwhline(c->window, 0, 0, ACS_HLINE, c->w);
 	maxlen = c->w - 10;
 	if (maxlen < 0)
 		maxlen = 0;
