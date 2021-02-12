@@ -64,7 +64,7 @@ case $1 in
             cat $INPUT > ${FIFO_CPY}
 	}
         ;;
-    "echo")
+    "capture")
         DO_RET=y
 	;;
 esac

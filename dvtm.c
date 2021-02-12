@@ -189,6 +189,7 @@ static void editor(const char *args[]);
 static void copymode(const char *args[]);
 static void copybuf(const char *args[]);
 static void sendtext(const char *args[]);
+static void capture(const char *args[]);
 static void focusn(const char *args[]);
 static void focusid(const char *args[]);
 static void focusnext(const char *args[]);
@@ -1514,6 +1515,18 @@ sendtext(const char *args[]) {
 	} else {
 	    vt_write(sel->term, args[0], strlen(args[0]));
 	}
+}
+
+static void
+capture(const char *args[]) {
+	char *buf = NULL;
+	size_t len;
+
+	if (!sel)
+		return;
+
+	len = vt_content_get(sel->app, &buf, false);
+	doret(buf, len);
 }
 
 static void
