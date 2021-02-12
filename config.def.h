@@ -244,6 +244,7 @@ static Cmd commands[] = {
 	{ "view", { view, { NULL } } },
 	{ "kill", { killclient, { NULL } } },
 	{ "copybuf", { copybuf, { NULL } } },
+	{ "sendtext", { sendtext, { NULL } } },
 };
 
 /* gets executed when dvtm is started */

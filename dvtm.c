@@ -188,6 +188,7 @@ static void create(const char *args[]);
 static void editor(const char *args[]);
 static void copymode(const char *args[]);
 static void copybuf(const char *args[]);
+static void sendtext(const char *args[]);
 static void focusn(const char *args[]);
 static void focusid(const char *args[]);
 static void focusnext(const char *args[]);
@@ -1491,6 +1492,27 @@ copybuf(const char *args[]) {
 		} while (len == sizeof(buf));
 	} else if (strcmp(args[0], "get") == 0) {
 		doret(copyreg.data, copyreg.len);
+	}
+}
+
+static void
+sendtext(const char *args[]) {
+	char buf[512];
+	int len;
+
+	if (!sel || !args || !args[0])
+		return;
+
+	if (strcmp(args[0], "-") == 0) {
+		do {
+			len = read(cpyfifo.fd, buf, sizeof(buf));
+			if (len <= 0)
+				break;
+
+			vt_write(sel->term, buf, len);
+		} while (len == sizeof(buf));
+	} else {
+	    vt_write(sel->term, args[0], strlen(args[0]));
 	}
 }
 

@@ -46,6 +46,8 @@ if [ ! -e "${FIFO_CMD}" ]; then
     exit 1
 fi
 
+cmd_args="$@"
+
 case $1 in
     "settitle")
         echo -ne "\033]0;$2\007"
@@ -56,12 +58,18 @@ case $1 in
         [ "${2}" == "put" ] && cat $INPUT > ${FIFO_CPY}
         [ "${2}" == "get" ] && DO_RET=y
         ;;
+    "sendtext")
+        [ -n "${INPUT}" ] && {
+            cmd_args="${cmd_args} -"
+            cat $INPUT > ${FIFO_CPY}
+	}
+        ;;
     "echo")
         DO_RET=y
 	;;
 esac
 
-echo "$@" > $FIFO_CMD
+echo "$cmd_args" > $FIFO_CMD
 
 if [ "${DO_RET}" == "y" ]; then
     if [ ! -e "${FIFO_RET}" ]; then
