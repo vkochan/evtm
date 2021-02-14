@@ -1513,10 +1513,10 @@ sendtext(const char *args[]) {
 			if (len <= 0)
 				break;
 
-			vt_write(sel->term, buf, len);
+			vt_write(sel->app, buf, len);
 		} while (len == sizeof(buf));
 	} else {
-	    vt_write(sel->term, args[0], strlen(args[0]));
+	    vt_write(sel->app, args[0], strlen(args[0]));
 	}
 }
 
