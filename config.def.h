@@ -246,6 +246,7 @@ static Cmd commands[] = {
 	{ "copybuf", { copybuf, { NULL } } },
 	{ "sendtext", { sendtext, { NULL } } },
 	{ "capture", { capture, { NULL } } },
+	{ "exec", { doexec, { NULL } } },
 };
 
 /* gets executed when dvtm is started */

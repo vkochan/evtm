@@ -64,9 +64,10 @@ typedef struct Client Client;
 struct Client {
 	WINDOW *window;
 	Vt *term;
-	Vt *editor, *app;
+	Vt *overlay, *app;
+	bool is_editor;
 	int editor_fds[2];
-	volatile sig_atomic_t editor_died;
+	volatile sig_atomic_t overlay_died;
 	const char *cmd;
 	char title[255];
 	bool sync_title;
@@ -232,6 +233,7 @@ static void setcwd(const char *args[]);
 static void senduserevt(const char *args[]);
 static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
+static void doexec(const char *args[]);
 static void doret(const char *msg, size_t len);
 static void setstatus(const char *args[]);
 static void setminimized(const char *args[]);
@@ -795,8 +797,8 @@ resize_client(Client *c, int w, int h) {
 	if (resize_window || c->has_title_line != has_title_line) {
 		c->has_title_line = has_title_line;
 		vt_resize(c->app, h - has_title_line, w);
-		if (c->editor)
-			vt_resize(c->editor, h - has_title_line, w);
+		if (c->overlay)
+			vt_resize(c->overlay, h - has_title_line, w);
 	}
 }
 
@@ -844,8 +846,8 @@ sigchld_handler(int sig) {
 				c->died = true;
 				break;
 			}
-			if (c->editor && vt_pid_get(c->editor) == pid) {
-				c->editor_died = true;
+			if (c->overlay && vt_pid_get(c->overlay) == pid) {
+				c->overlay_died = true;
 				break;
 			}
 		}
@@ -1291,7 +1293,7 @@ synctitle(Client *c)
 	int ret;
 	int fd;
 
-	pty = c->editor ? vt_pty_get(c->editor) : vt_pty_get(c->app);
+	pty = c->overlay ? vt_pty_get(c->overlay) : vt_pty_get(c->app);
 
 	pid = tcgetpgrp(pty);
 	if (pid == -1)
@@ -1410,12 +1412,12 @@ editor(const char *args[]) {
 
 static void
 copymode(const char *args[]) {
-	if (!args || !args[0] || !sel || sel->editor)
+	if (!args || !args[0] || !sel || sel->overlay)
 		return;
 
 	bool colored = strstr(args[0], "pager") != NULL;
 
-	if (!(sel->editor = vt_create(sel->h - sel->has_title_line, sel->w, 0)))
+	if (!(sel->overlay = vt_create(sel->h - sel->has_title_line, sel->w, 0)))
 		return;
 
 	int *to = &sel->editor_fds[0];
@@ -1428,13 +1430,13 @@ copymode(const char *args[]) {
 	snprintf(argline, sizeof(argline), "+%d", line);
 	argv[1] = argline;
 
-	if (vt_forkpty(sel->editor, args[0], argv, NULL, NULL, to, from) < 0) {
-		vt_destroy(sel->editor);
-		sel->editor = NULL;
+	if (vt_forkpty(sel->overlay, args[0], argv, NULL, NULL, to, from) < 0) {
+		vt_destroy(sel->overlay);
+		sel->overlay = NULL;
 		return;
 	}
 
-	sel->term = sel->editor;
+	sel->term = sel->overlay;
 
 	if (sel->editor_fds[0] != -1) {
 		char *buf = NULL;
@@ -1454,9 +1456,10 @@ copymode(const char *args[]) {
 		close(sel->editor_fds[0]);
 		sel->editor_fds[0] = -1;
 	}
+	sel->is_editor = true;
 
 	if (args[1])
-		vt_write(sel->editor, args[1], strlen(args[1]));
+		vt_write(sel->overlay, args[1], strlen(args[1]));
 }
 
 static void
@@ -2141,6 +2144,22 @@ static void docmd(const char *args[]) {
 	handle_cmd(cmdbuf);
 }
 
+static void doexec(const char *args[]) {
+	if (!args || !args[0] || sel->overlay)
+		return;
+
+	if (!(sel->overlay = vt_create(sel->h - sel->has_title_line, sel->w, 0)))
+		return;
+
+	if (vt_forkpty(sel->overlay, args[0], args, NULL, NULL, NULL, NULL) < 0) {
+		vt_destroy(sel->overlay);
+		sel->overlay = NULL;
+		return;
+	}
+
+	sel->term = sel->overlay;
+}
+
 static void doret(const char *msg, size_t len) {
     char tmp[10] = { '\n' };
     unsigned int lines = 1;
@@ -2255,10 +2274,18 @@ handle_editor(Client *c) {
 			}
 		}
 	}
-	c->editor_died = false;
+}
+
+static void
+handle_overlay(Client *c) {
+	if (c->is_editor)
+		handle_editor(c);
+
+	c->overlay_died = false;
+	c->is_editor = false;
 	c->editor_fds[1] = -1;
-	vt_destroy(c->editor);
-	c->editor = NULL;
+	vt_destroy(c->overlay);
+	c->overlay = NULL;
 	c->term = c->app;
 	vt_dirty(c->term);
 	draw_content(c);
@@ -2498,15 +2525,15 @@ main(int argc, char *argv[]) {
 		}
 
 		for (Client *c = clients; c; ) {
-			if (c->editor && c->editor_died)
-				handle_editor(c);
-			if (!c->editor && c->died) {
+			if (c->overlay && c->overlay_died)
+				handle_overlay(c);
+			if (!c->overlay && c->died) {
 				Client *t = c->next;
 				destroy(c);
 				c = t;
 				continue;
 			}
-			int pty = c->editor ? vt_pty_get(c->editor) : vt_pty_get(c->app);
+			int pty = c->overlay ? vt_pty_get(c->overlay) : vt_pty_get(c->app);
 			FD_SET(pty, &rd);
 			nfds = MAX(nfds, pty);
 			c = c->next;
@@ -2570,8 +2597,8 @@ rescan:
 		for (Client *c = clients; c; c = c->next) {
 			if (FD_ISSET(vt_pty_get(c->term), &rd)) {
 				if (vt_process(c->term) < 0 && errno == EIO) {
-					if (c->editor)
-						c->editor_died = true;
+					if (c->overlay)
+						c->overlay_died = true;
 					else
 						c->died = true;
 					continue;
