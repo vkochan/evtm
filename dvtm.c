@@ -258,6 +258,9 @@ static char *title;
 static KeyBinding *usrkeyb = NULL;
 static int usrkeybn;
 
+static KeyBinding *modkeyb = NULL;
+static int modkeybn;
+
 #include "config.h"
 
 #define CWD_MAX		256
@@ -701,6 +704,17 @@ static void
 focus(Client *c) {
 	if (!c)
 		for (c = stack; c && !isvisible(c); c = c->snext);
+
+	if (c) {
+		if (c->minimized) {
+			modkeybn = LENGTH(min_bindings);
+			modkeyb = min_bindings;
+		} else {
+			modkeybn = 0;
+			modkeyb = NULL;
+		}
+	}
+
 	if (sel == c)
 		return;
 	lastsel = sel;
@@ -907,6 +921,8 @@ keybinding(KeyCombo keys, unsigned int keycount) {
 	KeyBinding *keyb;
 
 	keyb = keybindmatch(bindings, LENGTH(bindings), keys, keycount);
+	if (!keyb && modkeyb)
+		keyb = keybindmatch(modkeyb, modkeybn, keys, keycount);
 	if (!keyb)
 		keyb = keybindmatch(usrkeyb, usrkeybn, keys, keycount);
 	return keyb;

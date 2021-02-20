@@ -81,6 +81,12 @@ static Layout layouts[] = {
 	{ { MOD, 'V', KEY,     }, { toggleview,     { tags[TAG] }               } }, \
 	{ { MOD, 'T', KEY,     }, { toggletag,      { tags[TAG] }               } },
 
+static KeyBinding min_bindings[] = {
+	{ { '\n',   }, { toggleminimize,   { NULL }   } },
+	{ { '\r',   }, { toggleminimize,   { NULL }   } },
+	{ { 'x',    }, { killclient,       { NULL }   } },
+};
+
 /* you can specifiy at most 3 arguments */
 static KeyBinding bindings[] = {
 	{ { MOD, 'c',          }, { create,         { NULL }                    } },
