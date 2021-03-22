@@ -218,6 +218,7 @@ static void startup(const char *args[]);
 static void tag(const char *args[]);
 static void tagid(const char *args[]);
 static void tagname(const char *args[]);
+static void tagnamebydir(const char *args[]);
 static void togglebar(const char *args[]);
 static void togglebarpos(const char *args[]);
 static void toggleminimize(const char *args[]);
@@ -254,6 +255,7 @@ extern Screen screen;
 static unsigned int waw, wah, wax, way;
 static Client *clients = NULL;
 static char *title;
+static bool show_tagnamebydir = false;
 
 static KeyBinding *usrkeyb = NULL;
 static int usrkeybn;
@@ -401,6 +403,7 @@ showbar(void) {
 
 static void
 drawbar(void) {
+	char buf[128];
 	int sx, sy, x, y, width;
 	unsigned int occupied = 0, urgent = 0;
 	if (bar.pos == BAR_OFF)
@@ -426,10 +429,13 @@ drawbar(void) {
 		else
 			attrset(TAG_NORMAL);
 
-		if (pertag.name[i+1] && strlen(pertag.name[i+1]))
+		if (pertag.name[i+1] && strlen(pertag.name[i+1])) {
 			printw(TAG_SYMBOL, tags[i], ":", pertag.name[i+1]);
-		else
+		} else if (strlen(pertag.cwd[i+1]) && show_tagnamebydir && (occupied & (1 << i))) {
+			printw(TAG_SYMBOL, tags[i], ":", basename(pertag.cwd[i+1]));
+		} else {
 			printw(TAG_SYMBOL, tags[i], "", "");
+		}
 	}
 
 	attrset(pertag.runinall[pertag.curtag] ? TAG_SEL : TAG_NORMAL);
@@ -1017,6 +1023,21 @@ tagname(const char *args[]) {
 }
 
 static void
+tagnamebydir(const char *args[]) {
+	if (!args || !args[0])
+		return;
+
+	if (strcmp(args[0], "on") == 0)
+		show_tagnamebydir = true;
+	else if (strcmp(args[0], "off") == 0)
+		show_tagnamebydir = true;
+	else
+		return;
+
+	drawbar();
+}
+
+static void
 toggletag(const char *args[]) {
 	if (!sel)
 		return;
@@ -1155,10 +1176,7 @@ initpertag(void) {
 		pertag.runinall[i] = runinall;
 		pertag.msticky[i] = false;
 		pertag.name[i] = NULL;
-
 		pertag.cwd[i] = calloc(CWD_MAX, 1);
-		if (!getcwd(pertag.cwd[i], CWD_MAX))
-			error("%s\n", strerror(errno));
 	}
 }
 
@@ -1395,7 +1413,7 @@ create(const char *args[]) {
 
 	if (args && args[2])
 		cwd = !strcmp(args[2], "$CWD") ? getcwd_by_pid(sel) : (char*)args[2];
-	else
+	else if (strlen(pertag.cwd[pertag.curtag]))
 		cwd = pertag.cwd[pertag.curtag];
 
 	c->pid = vt_forkpty(c->term, shell, pargs, cwd, env, NULL, NULL);
@@ -1992,6 +2010,9 @@ setcwd(const char *args[]) {
 		tag = atoi(args[0]);
 
 	strncpy(pertag.cwd[tag], args[0], CWD_MAX - 1);
+
+	/* in case tagnamebydir is set */
+	drawbar();
 }
 
 static void senduserevt(const char *args[]) {
