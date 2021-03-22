@@ -249,7 +249,7 @@ static Cmd commands[] = {
 	{ "setstatus", { setstatus, { NULL } } },
 	{ "setminimized", { setminimized, { NULL } } },
 	{ "tagname", { tagname, { NULL } } },
-	{ "tagnamebycwd", { tagnamebydir, { NULL } } },
+	{ "tagnamebycwd", { tagnamebycwd, { NULL } } },
 	{ "view", { view, { NULL } } },
 	{ "kill", { killclient, { NULL } } },
 	{ "copybuf", { copybuf, { NULL } } },

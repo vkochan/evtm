@@ -218,7 +218,7 @@ static void startup(const char *args[]);
 static void tag(const char *args[]);
 static void tagid(const char *args[]);
 static void tagname(const char *args[]);
-static void tagnamebydir(const char *args[]);
+static void tagnamebycwd(const char *args[]);
 static void togglebar(const char *args[]);
 static void togglebarpos(const char *args[]);
 static void toggleminimize(const char *args[]);
@@ -255,7 +255,7 @@ extern Screen screen;
 static unsigned int waw, wah, wax, way;
 static Client *clients = NULL;
 static char *title;
-static bool show_tagnamebydir = false;
+static bool show_tagnamebycwd = false;
 
 static KeyBinding *usrkeyb = NULL;
 static int usrkeybn;
@@ -431,7 +431,7 @@ drawbar(void) {
 
 		if (pertag.name[i+1] && strlen(pertag.name[i+1])) {
 			printw(TAG_SYMBOL, tags[i], ":", pertag.name[i+1]);
-		} else if (strlen(pertag.cwd[i+1]) && show_tagnamebydir && (occupied & (1 << i))) {
+		} else if (strlen(pertag.cwd[i+1]) && show_tagnamebycwd && (occupied & (1 << i))) {
 			printw(TAG_SYMBOL, tags[i], ":", basename(pertag.cwd[i+1]));
 		} else {
 			printw(TAG_SYMBOL, tags[i], "", "");
@@ -1023,14 +1023,14 @@ tagname(const char *args[]) {
 }
 
 static void
-tagnamebydir(const char *args[]) {
+tagnamebycwd(const char *args[]) {
 	if (!args || !args[0])
 		return;
 
 	if (strcmp(args[0], "on") == 0)
-		show_tagnamebydir = true;
+		show_tagnamebycwd = true;
 	else if (strcmp(args[0], "off") == 0)
-		show_tagnamebydir = true;
+		show_tagnamebycwd = true;
 	else
 		return;
 
