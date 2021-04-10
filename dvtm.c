@@ -2652,7 +2652,8 @@ rescan:
 					draw_content(c);
 					wnoutrefresh(c->window);
 				}
-			} else if (isvisible(c) && c->minimized) {
+			} else if (!isarrange(fullscreen) && isvisible(c)
+					&& c->minimized) {
 				draw_border(c);
 				wnoutrefresh(c->window);
 			}
