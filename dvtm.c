@@ -212,6 +212,7 @@ static void redraw(const char *args[]);
 static void scrollback(const char *args[]);
 static void send(const char *args[]);
 static void setlayout(const char *args[]);
+static void togglemaximize(const char *args[]);
 static void incnmaster(const char *args[]);
 static void setmfact(const char *args[]);
 static void startup(const char *args[]);
@@ -272,6 +273,7 @@ typedef struct {
 	int nmaster[LENGTH(tags) + 1];
 	float mfact[LENGTH(tags) + 1];
 	Layout *layout[LENGTH(tags) + 1];
+	Layout *layout_prev[LENGTH(tags) + 1];
 	int barpos[LENGTH(tags) + 1];
 	int barlastpos[LENGTH(tags) + 1];
 	bool runinall[LENGTH(tags) + 1];
@@ -1171,6 +1173,7 @@ initpertag(void) {
 		pertag.nmaster[i] = screen.nmaster;
 		pertag.mfact[i] = screen.mfact;
 		pertag.layout[i] = layout;
+		pertag.layout_prev[i] = layout;
 		pertag.barpos[i] = bar.pos;
 		pertag.barlastpos[i] = bar.lastpos;
 		pertag.runinall[i] = runinall;
@@ -1831,8 +1834,21 @@ setlayout(const char *args[]) {
 			return;
 		layout = &layouts[i];
 	}
+	pertag.layout_prev[pertag.curtag] = pertag.layout[pertag.curtag];
 	pertag.layout[pertag.curtag] = layout;
 	arrange();
+}
+
+static void
+togglemaximize(const char *args[]) {
+	if (isarrange(fullscreen)) {
+		layout = pertag.layout_prev[pertag.curtag];
+		pertag.layout[pertag.curtag] = layout;
+		arrange();
+	} else {
+		const char *maxargs[] = { "[ ]" };
+		setlayout(maxargs);
+	}
 }
 
 static void
