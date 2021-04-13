@@ -8,7 +8,7 @@ static void bstack(void)
 			n++;
 
 	m  = MAX(1, MIN(n, screen.nmaster));
-	mh = n == m ? wah : screen.mfact * wah;
+	mh = n == m ? wah : getmfact() * wah;
 	mw = waw / m;
 	tw = n == m ? 0 : waw / (n - m);
 	nx = wax;

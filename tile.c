@@ -8,7 +8,7 @@ static void tile(void)
 			n++;
 
 	m  = MAX(1, MIN(n, screen.nmaster));
-	mw = n == m ? waw : screen.mfact * waw;
+	mw = n == m ? waw : getmfact() * waw;
 	mh = wah / m;
 	th = n == m ? 0 : wah / (n - m);
 	nx = wax;
