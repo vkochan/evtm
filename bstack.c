@@ -7,7 +7,7 @@ static void bstack(void)
 		if (!c->minimized)
 			n++;
 
-	m  = MAX(1, MIN(n, screen.nmaster));
+	m  = MAX(1, MIN(n, getnmaster()));
 	mh = n == m ? wah : getmfact() * wah;
 	mw = waw / m;
 	tw = n == m ? 0 : waw / (n - m);

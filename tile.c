@@ -7,7 +7,7 @@ static void tile(void)
 		if (!c->minimized)
 			n++;
 
-	m  = MAX(1, MIN(n, screen.nmaster));
+	m  = MAX(1, MIN(n, getnmaster()));
 	mw = n == m ? waw : getmfact() * waw;
 	mh = wah / m;
 	th = n == m ? 0 : wah / (n - m);

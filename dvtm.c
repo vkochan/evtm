@@ -47,7 +47,6 @@ int ESCDELAY;
 #endif
 
 typedef struct {
-	unsigned int nmaster;
 	int history;
 	int w;
 	int h;
@@ -213,6 +212,7 @@ static void send(const char *args[]);
 static void setlayout(const char *args[]);
 static void togglemaximize(const char *args[]);
 static void incnmaster(const char *args[]);
+static int getnmaster(void);
 static void setmfact(const char *args[]);
 static float getmfact(void);
 static void startup(const char *args[]);
@@ -284,7 +284,7 @@ typedef struct {
 
 /* global variables */
 static const char *dvtm_name = "dvtm";
-Screen screen = { .nmaster = NMASTER, .history = SCROLL_HISTORY };
+Screen screen = { .history = SCROLL_HISTORY };
 static Pertag pertag;
 static Client *stack = NULL;
 static Client *sel = NULL;
@@ -365,7 +365,7 @@ static bool ismastersticky(Client *c) {
 	if (!c)
 		return true;
 
-	for (m = nextvisible(clients); m && n < screen.nmaster; m = nextvisible(m->next), n++) {
+	for (m = nextvisible(clients); m && n < getnmaster(); m = nextvisible(m->next), n++) {
 		if (c == m)
 			return true;
 	}
@@ -621,7 +621,7 @@ lastmaster(unsigned int tag) {
 	int n = 1;
 
 	for (; c && !(c->tags & tag); c = c->next);
-	for (; c && n < screen.nmaster; c = c->next, n++);
+	for (; c && n < getnmaster(); c = c->next, n++);
 
 	return c;
 }
@@ -1052,7 +1052,6 @@ toggletag(const char *args[]) {
 
 static void
 setpertag(void) {
-	screen.nmaster = pertag.nmaster[pertag.curtag];
 	layout = pertag.layout[pertag.curtag];
 	if (bar.pos != pertag.barpos[pertag.curtag]) {
 		bar.pos = pertag.barpos[pertag.curtag];
@@ -1169,7 +1168,7 @@ initpertag(void) {
 
 	pertag.curtag = pertag.prevtag = 1;
 	for(i=0; i <= LENGTH(tags); i++) {
-		pertag.nmaster[i] = screen.nmaster;
+		pertag.nmaster[i] = NMASTER;
 		pertag.mfact[i] = MFACT;
 		pertag.layout[i] = layout;
 		pertag.layout_prev[i] = layout;
@@ -1852,23 +1851,31 @@ togglemaximize(const char *args[]) {
 
 static void
 incnmaster(const char *args[]) {
-	int delta;
+	int delta, nmaster;
 
 	if (isarrange(fullscreen) || isarrange(grid))
 		return;
+
+	nmaster = pertag.nmaster[pertag.curtag];
+
 	/* arg handling, manipulate nmaster */
 	if (args[0] == NULL) {
-		screen.nmaster = NMASTER;
+		nmaster = NMASTER;
 	} else if (sscanf(args[0], "%d", &delta) == 1) {
 		if (args[0][0] == '+' || args[0][0] == '-')
-			screen.nmaster += delta;
+			nmaster += delta;
 		else
-			screen.nmaster = delta;
-		if (screen.nmaster < 1)
-			screen.nmaster = 1;
+			nmaster = delta;
+		if (nmaster < 1)
+			nmaster = 1;
 	}
-	pertag.nmaster[pertag.curtag] = screen.nmaster;
+	pertag.nmaster[pertag.curtag] = nmaster;
 	arrange();
+}
+
+static int
+getnmaster(void) {
+	return pertag.nmaster[pertag.curtag];
 }
 
 static void
