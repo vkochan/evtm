@@ -358,8 +358,6 @@ static bool ismastersticky(Client *c) {
 	int n = 0;
 	Client *m;
 
-	if (isarrange(fullscreen) || isarrange(grid))
-		return false;
 	if (!pertag.msticky[pertag.curtag])
 		return false;
 	if (!c)
