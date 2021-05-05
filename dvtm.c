@@ -519,11 +519,10 @@ draw_border(Client *c) {
 	}
 
 	wattrset(c->window, attrs_title);
-	mvwprintw(c->window, 0, 2, "[(#%d) %s%s%s]",
+	mvwprintw(c->window, 0, 2, "[%d|%s%s]",
 		  c->order,
 		  ismastersticky(c) ? "*" : "",
-	          *c->title ? c->title : "",
-	          *c->title ? " | " : "");
+	          *c->title ? c->title : "");
 	wattrset(c->window, attrs);
 	if (t)
 		c->title[maxlen] = t;
