@@ -489,15 +489,17 @@ show_border(void) {
 
 static void
 draw_border(Client *c) {
-	char t = '\0';
+	int attrs_title = (COLOR(MAGENTA) | A_NORMAL);
 	int x, y, maxlen, attrs = NORMAL_ATTR;
+	char t = '\0';
+
 
 	if (!show_border())
 		return;
 	if (sel != c && c->urgent)
 		attrs = URGENT_ATTR;
 	if (sel == c || (pertag.runinall[pertag.curtag] && !c->minimized))
-		attrs = SELECTED_ATTR;
+		attrs_title = attrs = SELECTED_ATTR;
 
 	wattrset(c->window, attrs);
 	getyx(c->window, y, x);
@@ -516,11 +518,13 @@ draw_border(Client *c) {
 		c->title[maxlen] = '\0';
 	}
 
+	wattrset(c->window, attrs_title);
 	mvwprintw(c->window, 0, 2, "[(#%d) %s%s%s]",
 		  c->order,
 		  ismastersticky(c) ? "*" : "",
 	          *c->title ? c->title : "",
 	          *c->title ? " | " : "");
+	wattrset(c->window, attrs);
 	if (t)
 		c->title[maxlen] = t;
 	wmove(c->window, y, x);
