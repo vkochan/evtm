@@ -228,38 +228,6 @@ static Button buttons[] = {
 };
 #endif /* CONFIG_MOUSE */
 
-static Cmd commands[] = {
-	/* create [cmd]: create a new window, run `cmd` in the shell if specified */
-	{ "create", { create,	{ NULL } } },
-	/* focus <win_id>: focus the window whose `DVTM_WINDOW_ID` is `win_id` */
-	{ "focus",  { focusid,	{ NULL } } },
-	/* tag <win_id> <tag> [tag ...]: add +tag, remove -tag or set tag of the window with the given identifier */
-	{ "tag",    { tagid,	{ NULL } } },
-	/* set master sticky mode on/off */
-	{ "setsticky",    { setsticky,	{ NULL } } },
-	/* increase/decrease the number of windows in master area */
-	{ "incnmaster", { incnmaster, { NULL } } },
-	/* increase/decrease the size of master area */
-	{ "setmfact", { setmfact, { NULL } } },
-	/* put/get window to/from master area */
-	{ "zoom", { zoom, { NULL } } },
-	/* set cwd per tag or for current */
-	{ "setcwd", { setcwd, { NULL } } },
-	/* change layout by name or select next */
-	{ "setlayout", { setlayout, { NULL } } },
-	/* status bar */
-	{ "setstatus", { setstatus, { NULL } } },
-	{ "setminimized", { setminimized, { NULL } } },
-	{ "tagname", { tagname, { NULL } } },
-	{ "tagnamebycwd", { tagnamebycwd, { NULL } } },
-	{ "view", { view, { NULL } } },
-	{ "kill", { killclient, { NULL } } },
-	{ "copybuf", { copybuf, { NULL } } },
-	{ "sendtext", { sendtext, { NULL } } },
-	{ "capture", { capture, { NULL } } },
-	{ "exec", { doexec, { NULL } } },
-};
-
 /* gets executed when dvtm is started */
 static Action actions[] = {
 	{ create, { NULL } },

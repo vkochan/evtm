@@ -5,6 +5,7 @@ MANPREFIX = ${PREFIX}/share/man
 # specify your systems terminfo directory
 # leave empty to install into your home folder
 TERMINFO := ${DESTDIR}${PREFIX}/share/terminfo
+LIB_PREFIX = ${PREFIX}/lib/dvtm
 
 INCS = -I.
 LIBS = -lc -lutil -lncursesw

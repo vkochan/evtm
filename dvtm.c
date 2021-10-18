@@ -36,6 +36,7 @@
 #if defined __CYGWIN__ || defined __sun
 # include <termios.h>
 #endif
+#include "dvtm.h"
 #include "vt.h"
 
 #ifdef PDCURSES
@@ -182,6 +183,18 @@ typedef struct {
  #define debug eprint
 #endif
 
+#ifdef SCHEME
+int scheme_init(void);
+void scheme_uninit(void);
+int scheme_event_handle(event_t evt);
+int scheme_eval_file(const char *scm_in, const char *out);
+#else
+int scheme_init(void) { return 0; }
+void scheme_uninit(void) { }
+int scheme_event_handle(event_t evt) { return 0; }
+int scheme_eval_file(const char *scm_in, const char *out) { return 0; }
+#endif
+
 /* commands for use by keybindings */
 static void create(const char *args[]);
 static void editor(const char *args[]);
@@ -236,6 +249,7 @@ static void senduserevt(const char *args[]);
 static void sendevtfmt(const char *fmt, ... );
 static void docmd(const char *args[]);
 static void doexec(const char *args[]);
+static void doeval(const char *args[]);
 static void doret(const char *msg, size_t len);
 static void setstatus(const char *args[]);
 static void setminimized(const char *args[]);
@@ -258,8 +272,11 @@ static Client *clients = NULL;
 static char *title;
 static bool show_tagnamebycwd = false;
 
-static KeyBinding *usrkeyb = NULL;
-static int usrkeybn;
+static KeyBinding *scmkeyb = NULL;
+static int scmkeybn;
+
+static KeyBinding *cmdkeyb = NULL;
+static int cmdkeybn;
 
 static KeyBinding *modkeyb = NULL;
 static int modkeybn;
@@ -301,16 +318,51 @@ static StatusBar bar = { .fd = -1,
 			 .autohide = BAR_AUTOHIDE,
 			 .h = 1
 		       };
+
 static Fifo cmdfifo = { .fd = -1 };
+static Fifo retfifo = { .fd = -1 };
+
 static Fifo evtfifo = { .fd = -1 };
 static Fifo cpyfifo = { .fd = -1 };
-static Fifo retfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
 static bool runinall = false;
 /* make sense only in layouts which has master window (tile, bstack) */
 static int min_align = MIN_ALIGN_HORIZ;
+
+static Cmd commands[] = {
+	/* create [cmd]: create a new window, run `cmd` in the shell if specified */
+	{ "create", { create,	{ NULL } } },
+	/* focus <win_id>: focus the window whose `DVTM_WINDOW_ID` is `win_id` */
+	{ "focus",  { focusid,	{ NULL } } },
+	/* tag <win_id> <tag> [tag ...]: add +tag, remove -tag or set tag of the window with the given identifier */
+	{ "tag",    { tagid,	{ NULL } } },
+	/* set master sticky mode on/off */
+	{ "setsticky",    { setsticky,	{ NULL } } },
+	/* increase/decrease the number of windows in master area */
+	{ "incnmaster", { incnmaster, { NULL } } },
+	/* increase/decrease the size of master area */
+	{ "setmfact", { setmfact, { NULL } } },
+	/* put/get window to/from master area */
+	{ "zoom", { zoom, { NULL } } },
+	/* set cwd per tag or for current */
+	{ "setcwd", { setcwd, { NULL } } },
+	/* change layout by name or select next */
+	{ "setlayout", { setlayout, { NULL } } },
+	/* status bar */
+	{ "setstatus", { setstatus, { NULL } } },
+	{ "setminimized", { setminimized, { NULL } } },
+	{ "tagname", { tagname, { NULL } } },
+	{ "tagnamebycwd", { tagnamebycwd, { NULL } } },
+	{ "view", { view, { NULL } } },
+	{ "kill", { killclient, { NULL } } },
+	{ "copybuf", { copybuf, { NULL } } },
+	{ "sendtext", { sendtext, { NULL } } },
+	{ "capture", { capture, { NULL } } },
+	{ "exec", { doexec, { NULL } } },
+	{ "eval", { doeval, { NULL } } },
+};
 
 static void
 eprint(const char *errstr, ...) {
@@ -352,6 +404,18 @@ static Client*
 nextvisible(Client *c) {
 	for (; c && !isvisible(c); c = c->next);
 	return c;
+}
+
+static bool ismaster(Client *c) {
+	int n = 0;
+	Client *m;
+
+	for (m = nextvisible(clients); m && n < getnmaster(); m = nextvisible(m->next), n++) {
+		if (c == m)
+			return true;
+	}
+
+	return false;
 }
 
 static bool ismastersticky(Client *c) {
@@ -749,6 +813,14 @@ focus(Client *c) {
 		}
 	}
 	curs_set(c && !c->minimized && vt_cursor_visible(c->term));
+
+	if (c) {
+		event_t evt;
+
+		evt.eid = EVT_WIN_SELECTED;
+		evt.oid = c->id;
+		scheme_event_handle(evt);
+	}
 }
 
 static void
@@ -772,15 +844,15 @@ applycolorrules(Client *c) {
 
 static void
 term_title_handler(Vt *term, const char *title) {
-	Client *c = (Client *)vt_data_get(term);
-	if (title)
-		strncpy(c->title, title, sizeof(c->title) - 1);
-	c->title[title ? sizeof(c->title) - 1 : 0] = '\0';
-	c->sync_title = false;
-	settitle(c);
-	if (!isarrange(fullscreen))
-		draw_border(c);
-	applycolorrules(c);
+	/* Client *c = (Client *)vt_data_get(term); */
+	/* if (title) */
+	/* 	strncpy(c->title, title, sizeof(c->title) - 1); */
+	/* c->title[title ? sizeof(c->title) - 1 : 0] = '\0'; */
+	/* c->sync_title = false; */
+	/* settitle(c); */
+	/* if (!isarrange(fullscreen)) */
+	/* 	draw_border(c); */
+	/* applycolorrules(c); */
 }
 
 static void
@@ -929,11 +1001,16 @@ static KeyBinding*
 keybinding(KeyCombo keys, unsigned int keycount) {
 	KeyBinding *keyb;
 
+#ifndef SCHEME
 	keyb = keybindmatch(bindings, LENGTH(bindings), keys, keycount);
 	if (!keyb && modkeyb)
 		keyb = keybindmatch(modkeyb, modkeybn, keys, keycount);
 	if (!keyb)
-		keyb = keybindmatch(usrkeyb, usrkeybn, keys, keycount);
+		keyb = keybindmatch(cmdkeyb, cmdkeybn, keys, keycount);
+	if (!keyb)
+#else
+		keyb = keybindmatch(scmkeyb, scmkeybn, keys, keycount);
+#endif
 	return keyb;
 }
 
@@ -1053,6 +1130,8 @@ toggletag(const char *args[]) {
 
 static void
 setpertag(void) {
+	event_t evt;
+
 	layout = pertag.layout[pertag.curtag];
 	if (bar.pos != pertag.barpos[pertag.curtag]) {
 		bar.pos = pertag.barpos[pertag.curtag];
@@ -1060,6 +1139,11 @@ setpertag(void) {
 	}
 	bar.lastpos = pertag.barlastpos[pertag.curtag];
 	runinall = pertag.runinall[pertag.curtag];
+
+	evt.eid = EVT_VIEW_SELECTED;
+	evt.oid = pertag.curtag;
+	scheme_event_handle(evt);
+
 	sendevtfmt("curtag %d\n", pertag.curtag);
 }
 
@@ -1241,10 +1325,13 @@ setup(void) {
 	sigaction(SIGTERM, &sa, NULL);
 	sa.sa_handler = SIG_IGN;
 	sigaction(SIGPIPE, &sa, NULL);
+	scheme_init();
 }
 
 static void
 destroy(Client *c) {
+	event_t evt;
+
 	if (sel == c)
 		focusnextnm(NULL);
 	detach(c);
@@ -1270,6 +1357,11 @@ destroy(Client *c) {
 		else
 			create(NULL);
 	}
+
+	evt.eid = EVT_WIN_DELETED;
+	evt.oid = c->id;
+	scheme_event_handle(evt);
+
 	free(c);
 	arrange();
 }
@@ -1277,6 +1369,7 @@ destroy(Client *c) {
 static void
 cleanup(void) {
 	int i;
+	scheme_uninit();
 	while (clients)
 		destroy(clients);
 	vt_shutdown();
@@ -1306,9 +1399,9 @@ cleanup(void) {
 		free(pertag.name[i]);
 		free(pertag.cwd[i]);
 	}
-	for(i=0; i < usrkeybn; i++)
-		free((char *) usrkeyb[i].action.args[0]);
-	free(usrkeyb);
+	for(i=0; i < cmdkeybn; i++)
+		free((char *) cmdkeyb[i].action.args[0]);
+	free(cmdkeyb);
 }
 
 static char *getcwd_by_pid(Client *c) {
@@ -1361,14 +1454,14 @@ done:
 	close(fd);
 }
 
-static void
-create(const char *args[]) {
+int __create(const char *args[]) {
 	const char *pargs[4] = { shell, NULL };
 	char buf[8], *cwd = NULL;
 	const char *env[] = {
 		"DVTM_WINDOW_ID", buf,
 		NULL
 	};
+	event_t evt;
 
 	if (args && args[0]) {
 		pargs[1] = "-c";
@@ -1377,21 +1470,21 @@ create(const char *args[]) {
 	}
 	Client *c = calloc(1, sizeof(Client));
 	if (!c)
-		return;
+		return -1;
 	c->tags = tagset[seltags];
 	c->id = ++cmdfifo.id;
 	snprintf(buf, sizeof buf, "%d", c->id);
 
 	if (!(c->window = newwin(wah, waw, way, wax))) {
 		free(c);
-		return;
+		return -1;
 	}
 
 	c->term = c->app = vt_create(screen.h, screen.w, screen.history);
 	if (!c->term) {
 		delwin(c->window);
 		free(c);
-		return;
+		return -1;
 	}
 
 	if (args && args[0]) {
@@ -1432,6 +1525,15 @@ create(const char *args[]) {
 	attach(c);
 	focus(c);
 	arrange();
+
+	evt.eid = EVT_WIN_CREATED;
+	evt.oid = c->id;
+	scheme_event_handle(evt);
+	return c->id;
+}
+
+static void create(const char *args[]) {
+	__create(args);
 }
 
 static void
@@ -1584,11 +1686,7 @@ focusn(const char *args[]) {
 }
 
 static void
-focusid(const char *args[]) {
-	if (!args[0])
-		return;
-
-	const int win_id = atoi(args[0]);
+__focusid(int win_id) {
 	for (Client *c = clients; c; c = c->next) {
 		if (c->id == win_id) {
 			focus(c);
@@ -1601,6 +1699,14 @@ focusid(const char *args[]) {
 			return;
 		}
 	}
+}
+
+static void
+focusid(const char *args[]) {
+	if (!args[0])
+		return;
+
+	__focusid(atoi(args[0]));
 }
 
 static void
@@ -1769,15 +1875,8 @@ static void killother(const char *args[]) {
 
 static void
 paste(const char *args[]) {
-	if (sel && copyreg.data) {
-		size_t len = copyreg.len;
-
-		if (copyreg.data[len - 2] == '\r')
-			len--;
-		if (copyreg.data[len - 1] == '\n')
-			len--;
-		vt_write(sel->term, copyreg.data, len);
-	}
+	if (sel && copyreg.data)
+		vt_write(sel->term, copyreg.data, copyreg.len);
 }
 
 static void
@@ -1836,6 +1935,14 @@ setlayout(const char *args[]) {
 	pertag.layout_prev[pertag.curtag] = pertag.layout[pertag.curtag];
 	pertag.layout[pertag.curtag] = layout;
 	arrange();
+
+	if (sel && isarrange(fullscreen)) {
+		event_t evt;
+
+		evt.eid = EVT_WIN_MAXIMIZED;
+		evt.oid = sel->id;
+		scheme_event_handle(evt);
+	}
 }
 
 static void
@@ -1946,6 +2053,8 @@ static void
 toggleminimize(const char *args[]) {
 	Client *c, *m, *t;
 	unsigned int n;
+	event_t evt;
+
 	if (!sel)
 		return;
 	/* do not minimize sticked master */
@@ -1983,6 +2092,12 @@ toggleminimize(const char *args[]) {
 		attach(m);
 	}
 	arrange();
+
+	if (m->minimized) {
+		evt.eid = EVT_WIN_MINIMIZED;
+		evt.oid = c->id;
+		scheme_event_handle(evt);
+	}
 }
 
 static void minimizeother(const char *args[])
@@ -2232,6 +2347,18 @@ static void doexec(const char *args[]) {
 	sel->term = sel->overlay;
 }
 
+static void doeval(const char *args[]) {
+	char tmp[10];
+	int ret;
+
+	if (!args || !args[0] || !args[1])
+		return;
+
+	ret = scheme_eval_file(args[0], args[1]);
+
+	write(retfifo.fd, tmp, snprintf(tmp, sizeof(tmp), "%u\n", ret));
+}
+
 static void doret(const char *msg, size_t len) {
     char tmp[10] = { '\n' };
     unsigned int lines = 1;
@@ -2325,6 +2452,8 @@ handle_statusbar(void) {
 
 static void
 handle_editor(Client *c) {
+	event_t evt;
+
 	if (!copyreg.data && (copyreg.data = malloc(screen.history)))
 		copyreg.size = screen.history;
 	copyreg.len = 0;
@@ -2346,6 +2475,17 @@ handle_editor(Client *c) {
 			}
 		}
 	}
+
+	if (copyreg.len >= 2) {
+		if (copyreg.data[copyreg.len - 2] == '\r')
+			copyreg.len--;
+		if (copyreg.data[copyreg.len - 1] == '\n')
+			copyreg.len--;
+	}
+
+	evt.eid = EVT_WIN_COPIED;
+	evt.oid = c->id;
+	scheme_event_handle(evt);
 }
 
 static void
@@ -2427,12 +2567,12 @@ addusrkeyb(char *map)
 	if (strlen(valstr) == 0)
 		error("key-bind value is empty\n");
 
-	usrkeybn++;
-	usrkeyb = realloc(usrkeyb, sizeof(*usrkeyb) * usrkeybn);
-	if (!usrkeyb)
-		error("fail on usrkeyb realloc\n");
+	cmdkeybn++;
+	cmdkeyb = realloc(cmdkeyb, sizeof(*cmdkeyb) * cmdkeybn);
+	if (!cmdkeyb)
+		error("fail on cmdkeyb realloc\n");
 
-	key = &usrkeyb[usrkeybn - 1];
+	key = &cmdkeyb[cmdkeybn - 1];
 	memset(key, 0, sizeof(*key));
 
 	for (i = 0; i < MAX_KEYS; i++) {
@@ -2700,4 +2840,774 @@ rescan:
 
 	cleanup();
 	return 0;
+}
+
+static Client *client_get_by_id(int id)
+{
+	for (Client *c = clients; c; c = c->next) {
+		if (c->id == id)
+			return c;
+	}
+
+	return NULL;
+}
+
+/* External API */
+int win_get_by_coord(int x, int y)
+{
+	Client *c = get_client_by_coord(x, y);
+
+	if (c)
+		return c->id;
+
+	return 0;
+}
+
+bool win_is_visible(int wid)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (c)
+		return isvisible(c);
+
+	return false;
+}
+
+int win_first_get(void)
+{
+	Client *c;
+
+	for (c = clients; c && !isvisible(c); c = c->next);
+
+	if (c && isvisible(c))
+		return c->id;
+
+	return 0;
+}
+
+int win_prev_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *p;
+
+	if (!c)
+		return 0;
+
+	for (p = c->prev; p && !isvisible(p); p = p->prev);
+
+	if (p && isvisible(p))
+		return p->id;
+
+	return 0;
+}
+
+int win_next_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *n;
+
+	for (n = n->next; n && !isvisible(n); n = n->next);
+
+	if (n && isvisible(n))
+		return n->id;
+
+	return 0;
+}
+
+int win_upper_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *u;
+
+	if (!c)
+		return 0;
+
+	/* avoid vertical separator, hence +1 in x direction */
+	u = get_client_by_coord(c->x + 1, c->y - 1);
+	if (u)
+		return u->id;
+
+	return 0;
+}
+
+int win_lower_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *l;
+
+	if (!c)
+		return 0;
+
+	l = get_client_by_coord(c->x, c->y + c->h);
+	if (l)
+		return l->id;
+
+	return 0;
+}
+
+int win_left_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *l;
+
+	if (!c)
+		return 0;
+
+	l = get_client_by_coord(c->x - 2, c->y);
+	if (l)
+		return l->id;
+
+	return 0;
+}
+
+int win_right_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+	Client *r;
+
+	if (!c)
+		return 0;
+
+	r = get_client_by_coord(c->x + c->w + 1, c->y);
+	if (r)
+		return r->id;
+
+	return 0;
+}
+
+int win_current_get(void)
+{
+	if (sel)
+		return sel->id;
+
+	return 0;
+}
+
+int win_current_set(int wid)
+{
+	__focusid(wid);
+	return 0;
+}
+
+int win_create(char *prog)
+{
+	const char *args[3] = {NULL};
+
+	args[0] = prog;
+	return __create(args);
+}
+
+void win_del(int wid)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (c)
+		kill(-c->pid, SIGKILL);
+		/* destroy(c); */
+}
+
+char *win_title_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (c)
+		return c->title;
+
+	return NULL;
+}
+
+int win_title_set(int wid, char *title)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (c) {
+		strncpy(c->title, title, sizeof(c->title) - 1);
+		c->sync_title = false;
+		settitle(c);
+		if (!isarrange(fullscreen))
+			draw_border(c);
+		applycolorrules(c);
+		return 0;
+	}
+
+	return -1;
+}
+
+static int tag_to_bit(int tag)
+{
+	if (!tag)
+		return ~0;
+
+	tag--;
+	return TAGMASK & ((tag < LENGTH(tags)) ? (1 << tag) : 0);
+}
+
+int win_tag_set(int wid, int tag)
+{
+	unsigned int ntags = tag_to_bit(tag);
+	Client *c;
+
+	if (!ntags)
+		return -1;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	c->tags = ntags;
+	tagschanged();
+	return 0;
+}
+
+int win_tag_toggle(int wid, int tag)
+{
+	unsigned int ntags;
+	Client *c;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	ntags = c->tags ^ tag_to_bit(tag);
+	if (ntags) {
+		c->tags = ntags;
+		tagschanged();
+	}
+}
+
+int win_tag_add(int wid, int tag)
+{
+	unsigned int ntags;
+	Client *c;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	ntags = c->tags | tag_to_bit(tag);
+	c->tags = ntags;
+	tagschanged();
+	return 0;
+}
+
+int win_tag_del(int wid, int tag)
+{
+	unsigned int ntags;
+	Client *c;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	ntags = c->tags & ~tag_to_bit(tag);
+	c->tags = ntags;
+	tagschanged();
+	return 0;
+}
+
+win_state_t win_state_get(int wid)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (!c)
+		return -1;
+
+	if (c->minimized) {
+		return WIN_STATE_MINIMIZED;
+	} else if (isarrange(fullscreen)) {
+		return WIN_STATE_MAXIMIZED;
+	} else if (ismaster(c)) {
+		return WIN_STATE_MASTER;
+	}
+
+	return -1;
+}
+
+int win_state_set(int wid, win_state_t st)
+{
+	const char *maxi[] = { "[ ]" };
+	Client *c, *orig;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	orig = sel;
+
+	switch (st) {
+	case WIN_STATE_MINIMIZED:
+		if (!c->minimized) {
+			win_current_set(wid);
+			toggleminimize(NULL);
+			/* switch to the original window */
+			if (orig)
+				win_current_set(orig->id);
+		}
+		break;
+
+	case WIN_STATE_MAXIMIZED:
+		win_current_set(wid);
+		setlayout(maxi);
+		break;
+
+	case WIN_STATE_MASTER:
+		win_current_set(wid);
+		detach(c);
+		attachfirst(c);
+		focus(c);
+		if (c->minimized)
+			toggleminimize(NULL);
+		arrange();
+		/* switch to the original window */
+		if (orig)
+			win_current_set(orig->id);
+		break;
+
+        default: return -1;
+	}
+
+	return 0;
+}
+
+int win_state_toggle(int wid, win_state_t st)
+{
+	const char *maxi[] = { "[ ]" };
+	Client *c, *orig;
+
+	c = client_get_by_id(wid);
+	if (!c)
+		return -1;
+
+	orig = sel;
+
+	switch (st) {
+	case WIN_STATE_MINIMIZED:
+		win_current_set(wid);
+		toggleminimize(NULL);
+		/* switch to the original window */
+		if (orig)
+			win_current_set(orig->id);
+		break;
+
+	case WIN_STATE_MAXIMIZED:
+		if (isarrange(fullscreen)) {
+			layout = pertag.layout_prev[pertag.curtag];
+			pertag.layout[pertag.curtag] = layout;
+			arrange();
+		} else {
+			setlayout(maxi);
+		}
+		break;
+
+        default: return -1;
+	}
+
+	return 0;
+}
+
+int win_keys_send(int wid, char *keys)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (!c)
+		return -1;
+
+	vt_write(c->term, keys, strlen(keys));
+	return 0;
+}
+
+int win_text_send(int wid, char *text)
+{
+	Client *c = client_get_by_id(wid);
+
+	if (!c)
+		return -1;
+
+	vt_write(c->term, text, strlen(text));
+	return 0;
+}
+
+int win_pager_mode(int wid)
+{
+	const char *args[] = {"dvtm-pager", NULL};
+	Client *c = client_get_by_id(wid);
+	Client *tmp = sel;
+
+	if (!c)
+		return -1;
+
+	sel = c;
+	copymode(args);
+	sel = tmp;
+
+	return 0;
+}
+
+int win_copy_mode(int wid)
+{
+	const char *args[] = {"dvtm-editor", NULL};
+	Client *c = client_get_by_id(wid);
+	Client *tmp = sel;
+
+	if (!c)
+		return -1;
+
+	sel = c;
+	copymode(args);
+	sel = tmp;
+
+	return 0;
+}
+
+char *win_capture(int wid)
+{
+	return NULL;
+}
+
+int view_current_get(void)
+{
+	return pertag.curtag;
+}
+
+int view_current_set(int tag)
+{
+	int i;
+
+	unsigned int newtagset = tag_to_bit(tag);
+	if (tagset[seltags] != newtagset && newtagset) {
+		seltags ^= 1; /* toggle sel tagset */
+		pertag.prevtag = pertag.curtag;
+		pertag.curtag = tag;
+		setpertag();
+		tagset[seltags] = newtagset;
+		tagschanged();
+	}
+}
+
+const char *view_name_get(int tag)
+{
+	if (pertag.name[tag] && strlen(pertag.name[tag])) {
+		return pertag.name[tag];
+	} else {
+		return tags[tag-1];
+	}
+}
+
+int view_name_set(int tag, char *name)
+{
+	free(pertag.name[tag]);
+	pertag.name[tag] = NULL;
+
+	if (name && strlen(name))
+		pertag.name[tag] = strdup(name);
+	drawbar();
+}
+
+char *view_cwd_get(int tag)
+{
+	return pertag.cwd[tag];
+}
+
+int view_cwd_set(int tag, char *cwd)
+{
+	strncpy(pertag.cwd[tag], cwd, CWD_MAX - 1);
+	drawbar();
+	return 0;
+}
+
+layout_t layout_current_get(int tag)
+{
+	if (pertag.layout[tag]->arrange == fullscreen) {
+		return LAYOUT_MAXIMIZED;
+	} else if (pertag.layout[tag]->arrange == tile) {
+		return LAYOUT_TILED;
+	} else if (pertag.layout[tag]->arrange == bstack) {
+		return LAYOUT_BSTACK;
+	} else if (pertag.layout[tag]->arrange == grid) {
+		return LAYOUT_GRID;
+	} else {
+		return -1;
+	}
+}
+
+int layout_current_set(int tag, layout_t lay)
+{
+	layout = &layouts[lay];
+	pertag.layout_prev[pertag.curtag] = pertag.layout[pertag.curtag];
+	pertag.layout[pertag.curtag] = layout;
+	arrange();
+}
+
+int layout_nmaster_get(int tag)
+{
+	return pertag.nmaster[tag];
+}
+
+int layout_nmaster_set(int tag, int n)
+{
+	if (isarrange(fullscreen) || isarrange(grid))
+		return -1;
+
+	pertag.nmaster[tag] = n;
+	arrange();
+
+	return 0;
+}
+
+float layout_fmaster_get(int tag)
+{
+	return pertag.mfact[tag];
+}
+
+int layout_fmaster_set(int tag, float f)
+{
+	if (isarrange(fullscreen) || isarrange(grid))
+		return -1;
+
+	pertag.mfact[tag] = f;
+	arrange();
+
+	return 0;
+}
+
+bool layout_sticky_get(int tag)
+{
+	return pertag.msticky[tag];
+}
+
+int layout_sticky_set(int tag, bool is_sticky)
+{
+	pertag.msticky[tag] = is_sticky;
+	draw_all();
+	return 0;
+}
+
+static void bind_key_cmd(const char *args[]) {
+	bind_key_cb_t cb = (bind_key_cb_t) args[0];
+
+	cb();
+}
+
+static int parse_key(KeyBinding *key, char *str)
+{
+	char *tok_ptr = str;
+	char tmp[60] = {0};
+	char *tok;
+	int i;
+
+	strncpy(tmp, str, sizeof(tmp)-1);
+
+	tok = strtok_r(tmp, " ", &tok_ptr);
+
+	for (i = 0; i < MAX_KEYS && tok; i++) {
+		if (strlen(tok) == 3 && tok[0] == 'C' && tok[1] == '-') {
+			key->keys[i] = CTRL(tok[2]);
+		} else if (strlen(tok) == 3 && tok[0] == 'M' && tok[1] == '-') {
+			key->keys[i++] = ALT;
+			key->keys[i] = tok[2];
+		} else if (strcmp(tok, "<Space>") == 0) {
+			key->keys[i] = ' ';
+		} else if (strcmp(tok, "<Enter>") == 0) {
+			key->keys[i] = '\r';
+		} else if (strcmp(tok, "<Tab>") == 0) {
+			key->keys[i] = '\t';
+		} else {
+			key->keys[i] = tok[0];
+		}
+
+		tok = strtok_r(NULL, " ", &tok_ptr);
+	}
+
+	return 0;
+}
+
+static KeyBinding *find_key(char *str)
+{
+	KeyBinding *it = NULL, key;
+	int i, j;
+
+	parse_key(&key, str);
+
+	for (i = 0; i < scmkeybn; i++) {
+		it = &scmkeyb[i];
+
+		for (j = 0; j < MAX_KEYS; j++) {
+			if (it->keys[j] != key.keys[j]) {
+				it = NULL;
+				break;
+			}
+		}
+
+		if (it)
+			break;
+	}
+
+	return it;
+}
+
+int bind_key(char *map, bind_key_cb_t cb)
+{
+	KeyBinding *key;
+
+	key = find_key(map);
+	if (!key) {
+		scmkeybn++;
+		scmkeyb = realloc(scmkeyb, sizeof(*scmkeyb) * scmkeybn);
+		if (!scmkeyb)
+			error("fail on scmkeyb realloc\n");
+
+		key = &scmkeyb[scmkeybn - 1];
+		memset(key, 0, sizeof(*key));
+
+		parse_key(key, map);
+	}
+
+	key->action.args[0] = (const char *) cb;
+	key->action.cmd = bind_key_cmd;
+
+	return 0;
+}
+
+int unbind_key(char *map)
+{
+	KeyBinding key, *it = NULL, tmp;
+	int i, j;
+
+	parse_key(&key, map);
+
+	it = find_key(map);
+	if (it) {
+		tmp = scmkeyb[scmkeybn-1];
+		scmkeyb[scmkeybn-1] = *it;
+		*it = tmp;
+	}
+
+	scmkeybn--;
+	scmkeyb = realloc(scmkeyb, sizeof(*scmkeyb) * scmkeybn);
+	if (!scmkeyb)
+		error("fail on scmkeyb realloc\n");
+
+	return 0;
+}
+
+char *copy_buf_get(size_t *len)
+{
+	*len = copyreg.len;
+
+	if (!copyreg.len)
+		return NULL;
+
+	return copyreg.data;
+}
+
+int copy_buf_set(char *str)
+{
+	size_t len;
+
+	if (str) {
+		len = strlen(str);
+
+		if (copyreg.size < len) {
+			copyreg.data = realloc(copyreg.data, len * 2);
+			copyreg.size = len * 2;
+			copyreg.len = len;
+		}
+
+		memcpy(copyreg.data, str, len);
+
+		return 0;
+	}
+
+	return -1;
+}
+
+int fifo_create(void)
+{
+	char *cmd, *ret, *sta;
+	char rundir[128];
+	struct stat st;
+	char tmp[128];
+	pid_t pid;
+
+	snprintf(rundir, sizeof(rundir), "/run/user/%d/dvtm", getuid());
+
+	if (stat(rundir, &st)) {
+		if (mkdir(rundir, 0777)) {
+			fprintf(stderr, "could not create %s\n", rundir);
+			return -1;
+		}
+	}
+
+	pid = getpid();
+
+	snprintf(tmp, sizeof(tmp), "%s/dvtm-cmd-fifo-%d", rundir, pid);
+	cmdfifo.fd = open_or_create_fifo(tmp, &cmdfifo.file);
+	if (!(cmd = realpath(tmp, NULL)))
+		return -1;
+	cmdfifo.file = strdup(cmd);
+
+	snprintf(tmp, sizeof(tmp), "%s/dvtm-ret-fifo-%d", rundir, pid);
+	retfifo.fd = __open_or_create_fifo(tmp, &retfifo.file, O_RDWR);
+	if (!(ret = realpath(tmp, NULL))) {
+		close(cmdfifo.fd);
+		unlink(cmdfifo.file);
+		return -1;
+	}
+	retfifo.file = strdup(ret);
+
+	snprintf(tmp, sizeof(tmp), "%s/dvtm-status-fifo-%d", rundir, pid);
+	bar.fd = __open_or_create_fifo(tmp, &bar.file, O_RDWR);
+	if (!(sta = realpath(tmp, NULL))) {
+		close(cmdfifo.fd);
+		unlink(cmdfifo.file);
+		close(retfifo.fd);
+		unlink(retfifo.file);
+		return -1;
+	}
+	bar.file = strdup(sta);
+
+	setenv("DVTM_CMD_FIFO", cmd, 1);
+	setenv("DVTM_RET_FIFO", ret, 1);
+
+	return 0;
+}
+
+int tagbar_status_set(const char *s)
+{
+	write(bar.fd, s, strlen(s));
+	return 0;
+}
+
+int tagbar_status_align(int align)
+{
+	if (align)
+		bar.align = BAR_LEFT;
+	else
+		bar.align = BAR_RIGHT;
+
+	drawbar();
+	return 0;
+}
+
+int tagbar_show(bool show)
+{
+	if (!show)
+		bar.pos = BAR_OFF;
+	else
+		bar.pos = bar.lastpos;
+
+	if (bar.pos == BAR_OFF)
+		hidebar();
+	else
+		showbar();
+
+	bar.autohide = false;
+	updatebarpos();
+	redraw(NULL);
+	return 0;
+}
+
+void do_quit(void)
+{
+	quit(NULL);
 }

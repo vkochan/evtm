@@ -1,0 +1,95 @@
+#!/bin/sh
+
+EVAL_IN=""
+EVAL_OUT=""
+
+set -e
+
+REPL=n
+
+# $1 - eval expression as string
+do_eval() {
+    local eval_str="$@"
+    local retcode=0
+
+    echo "$eval_str" > $EVAL_IN
+    echo "eval $EVAL_IN $EVAL_OUT" > $FIFO_CMD
+
+    read retcode < $FIFO_RET
+
+    cat $EVAL_OUT
+
+    if [ "${REPL}" == "n" ]; then
+        exit $retcode
+    fi
+}
+
+do_repl() {
+    local exp=""
+
+    while IFS= read -e -p "> " -r exp; do
+        do_eval "$exp"
+    done
+}
+
+usage() {
+    echo "usage: dvtm-eval [OPTIONS] EXPR"
+    echo "OPTIONS:"
+    echo "   -c PATH         PATH to CMD FIFO (default is \$DVTM_CMD_FIFO)"
+    echo "   -r PATH         PATH to RET FIFO (default is \$DVTM_RET_FIFO)"
+    echo "   -i              Enter interactive mode"
+}
+
+do_exit() {
+    rm -f $EVAL_IN $EVAL_OUT
+}
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        "-c")
+            FIFO_CMD=$2
+            shift 1
+            ;;
+        "-r")
+            FIFO_RET=$2
+            shift 1
+            ;;
+        "-i")
+            REPL=y
+            ;;
+        *)
+         break
+         ;;
+    esac
+    shift 1
+done
+
+if [ -z "${1}" -a "${REPL}" == "n" ]; then
+    echo "error: please specify an expression to evaluate"
+    exit 1
+fi
+
+EVAL_IN=$(mktemp)
+EVAL_OUT=$(mktemp)
+
+trap do_exit EXIT
+
+[ -z "${FIFO_CMD}" ] && FIFO_CMD=${DVTM_CMD_FIFO}
+[ -z "${FIFO_RET}" ] && FIFO_RET=${DVTM_RET_FIFO}
+
+if [ ! -e "${FIFO_CMD}" ]; then
+    echo "error: cmd fifo does not exist"
+    usage
+    exit 1
+fi
+if [ ! -e "${FIFO_RET}" ]; then
+    echo "error: ret fifo does not exist"
+    usage
+    exit 1
+fi
+
+if [[ "${REPL}" == "y" ]]; then
+   do_repl
+else
+   do_eval "$@"
+fi
